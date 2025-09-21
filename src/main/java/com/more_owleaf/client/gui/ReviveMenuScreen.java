@@ -1,6 +1,7 @@
 package com.more_owleaf.client.gui;
 
 import com.more_owleaf.More_Owleaf;
+import com.more_owleaf.client.SkinHelper;
 import com.more_owleaf.network.DeathDataPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -11,9 +12,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
-import com.mojang.authlib.GameProfile;
+
 import java.util.List;
-import java.util.UUID;
 
 @Mod.EventBusSubscriber(modid = More_Owleaf.MODID, value = Dist.CLIENT)
 public class ReviveMenuScreen extends Screen {
@@ -42,31 +42,42 @@ public class ReviveMenuScreen extends Screen {
 
     private List<DeathDataPacket.DeathPlayerData> deadPlayers;
     private int currentPlayerIndex = 0;
-    
+
     public ReviveMenuScreen(List<DeathDataPacket.DeathPlayerData> deadPlayers) {
         super(Component.translatable("gui.more_owleaf.revive_menu"));
         this.deadPlayers = deadPlayers;
     }
-    
+
     public static void openWithDeathData(List<DeathDataPacket.DeathPlayerData> deadPlayers) {
         Minecraft.getInstance().execute(() -> {
             Minecraft.getInstance().setScreen(new ReviveMenuScreen(deadPlayers));
         });
     }
-    
+
     private DeathDataPacket.DeathPlayerData getCurrentPlayer() {
         if (deadPlayers.isEmpty()) return null;
         return deadPlayers.get(currentPlayerIndex);
     }
 
-    private static void renderPlayerHead2D(GuiGraphics graphics, int x, int y, GameProfile profile) {
-        if (profile == null) {
-            System.out.println("Profile is null");
-            return;
+    private static void renderPlayerHead2D(GuiGraphics graphics, int x, int y, DeathDataPacket.DeathPlayerData playerData) {
+        try {
+            ResourceLocation skin = SkinHelper.getPlayerSkinFromData(
+                    playerData.playerName,
+                    playerData.playerUUID,
+                    playerData.skinTextureData,
+                    playerData.skinSignature,
+                    playerData.hasSkinData
+            );
+
+            if (skin != null) {
+                graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 8, 8, 8, 8, 64, 64);
+                graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 40, 8, 8, 8, 64, 64);
+            } else {
+                graphics.fill(x, y, x + HEAD_SIZE, y + HEAD_SIZE, 0xFF8B7355);
+            }
+        } catch (Exception e) {
+            graphics.fill(x, y, x + HEAD_SIZE, y + HEAD_SIZE, 0xFF8B7355);
         }
-        ResourceLocation skin = Minecraft.getInstance().getSkinManager().getInsecureSkinLocation(profile);
-        graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 8, 8, 8, 8, 64, 64); // cabeza base
-        graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 40, 8, 8, 8, 64, 64); // overlay (gorra, etc)
     }
 
     @Override
@@ -86,7 +97,7 @@ public class ReviveMenuScreen extends Screen {
 
         this.addRenderableWidget(new LeftButton(leftButtonX, leftButtonY, leftButtonWidth, leftButtonHeight, Component.empty()));
 
-        int rightButtonX = this.width / 2 + 60- (rightButtonWidth / 2);
+        int rightButtonX = this.width / 2 + 60 - (rightButtonWidth / 2);
         int rightButtonY = centerY - (rightButtonHeight / 2);
 
         this.addRenderableWidget(new RightButton(rightButtonX, rightButtonY, rightButtonWidth, rightButtonHeight, Component.empty()));
@@ -95,69 +106,99 @@ public class ReviveMenuScreen extends Screen {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         this.renderBackground(guiGraphics);
-        guiGraphics.blit(TEXTURE, this.leftPos, this.topPos, 0, 0,
-                this.imageWidth, this.imageHeight,
-                this.textureWidth, this.textureHeight);
 
-        renderPlayerName(guiGraphics);
+        if (TEXTURE != null) {
+            guiGraphics.blit(TEXTURE, this.leftPos, this.topPos, 0, 0,
+                    this.imageWidth, this.imageHeight,
+                    this.textureWidth, this.textureHeight);
+        } else {
+            guiGraphics.fill(this.leftPos, this.topPos, this.leftPos + this.imageWidth, this.topPos + this.imageHeight, 0x88000000);
+        }
+
+        renderPlayerInfo(guiGraphics);
         super.render(guiGraphics, mouseX, mouseY, partialTicks);
     }
 
-    private void renderPlayerName(GuiGraphics guiGraphics) {
+    private void renderPlayerInfo(GuiGraphics guiGraphics) {
         DeathDataPacket.DeathPlayerData currentPlayer = getCurrentPlayer();
-        if (currentPlayer == null) return;
+        if (currentPlayer == null) {
+            Component noPlayers = Component.literal("No dead players");
+            int textWidth = this.font.width(noPlayers);
+            int textX = this.width / 2 - (textWidth / 2);
+            int textY = this.topPos + (this.imageHeight / 2);
+            guiGraphics.drawString(this.font, noPlayers, textX, textY, 0xFFFFFF, false);
+            return;
+        }
 
         int centerX = this.width / 2;
         int headCenterY = this.topPos + (this.imageHeight / 2) - 30;
-        int nameY = headCenterY - 20;
-
-        GameProfile profile = null;
-        try {
-            if (currentPlayer.playerUUID != null && !currentPlayer.playerUUID.trim().isEmpty()) {
-                UUID uuid = UUID.fromString(currentPlayer.playerUUID);
-                profile = new GameProfile(uuid, currentPlayer.playerName);
-            } else {
-                profile = new GameProfile(null, currentPlayer.playerName);
-            }
-        } catch (Exception e) {
-            profile = new GameProfile(null, currentPlayer.playerName);
-        }
-
-        if (profile == null) {
-            return;
-        }
+        int nameY = headCenterY - 25;
 
         int skinX = centerX - (HEAD_SIZE / 2);
         int skinY = headCenterY - (HEAD_SIZE / 2);
 
-
-        renderPlayerHead2D(guiGraphics, skinX, skinY, profile);
+        renderPlayerHead2D(guiGraphics, skinX, skinY, currentPlayer);
 
         Component playerName = Component.literal(currentPlayer.playerName);
         int textWidth = this.font.width(playerName);
-        int textX = centerX - (textWidth / 2) + 10;
+        int textX = centerX - (textWidth / 2);
 
         guiGraphics.pose().pushPose();
         float scaleFactor = 1.5F;
-        guiGraphics.pose().translate(textX + (textWidth * scaleFactor / 2), nameY + (scaleFactor * 4), 0);
+        guiGraphics.pose().translate(centerX, nameY + (scaleFactor * 4), 0);
         guiGraphics.pose().scale(scaleFactor, scaleFactor, 1.0F);
-        guiGraphics.pose().translate(-(textX + (textWidth * scaleFactor / 2)), -(nameY + (scaleFactor * 4)), 0);
+        guiGraphics.pose().translate(-centerX, -(nameY + (scaleFactor * 4)), 0);
         guiGraphics.drawString(this.font, playerName, textX, nameY, 0x751B0C, false);
         guiGraphics.pose().popPose();
 
         renderNavigationInfo(guiGraphics);
+        renderDeathInfo(guiGraphics, currentPlayer);
     }
-    
+
     private void renderNavigationInfo(GuiGraphics guiGraphics) {
         if (deadPlayers.size() > 1) {
             int centerX = this.width / 2;
-            int infoY = this.topPos + this.imageHeight - 30;
+            int infoY = this.topPos + this.imageHeight - 50;
 
             Component navigation = Component.literal((currentPlayerIndex + 1) + "/" + deadPlayers.size());
             int navWidth = this.font.width(navigation);
             int navX = centerX - (navWidth / 2);
             guiGraphics.drawString(this.font, navigation, navX, infoY, 0x888888, false);
         }
+    }
+
+    private void renderDeathInfo(GuiGraphics guiGraphics, DeathDataPacket.DeathPlayerData player) {
+        int centerX = this.width / 2;
+        int infoStartY = this.topPos + (this.imageHeight / 2) + 20;
+
+        String deathTime = formatTime(player.deathTime);
+        Component timeComponent = Component.literal("Died: " + deathTime);
+        int timeWidth = this.font.width(timeComponent);
+        guiGraphics.drawString(this.font, timeComponent, centerX - (timeWidth / 2), infoStartY, 0xCCCCCC, false);
+
+        String dimension = getDimensionName(player.dimension);
+        Component dimComponent = Component.literal("In: " + dimension);
+        int dimWidth = this.font.width(dimComponent);
+        guiGraphics.drawString(this.font, dimComponent, centerX - (dimWidth / 2), infoStartY + 12, 0xCCCCCC, false);
+    }
+
+    private String formatTime(String timeString) {
+        try {
+            return timeString.substring(0, Math.min(timeString.length(), 16)).replace("T", " ");
+        } catch (Exception e) {
+            return timeString;
+        }
+    }
+
+    private String getDimensionName(String dimension) {
+        if (dimension.contains("nether")) {
+            return "Nether";
+        } else if (dimension.contains("end")) {
+            return "End";
+        } else if (dimension.contains("overworld")) {
+            return "Overworld";
+        }
+        return "Unknown";
     }
 
     @Override
@@ -177,12 +218,11 @@ public class ReviveMenuScreen extends Screen {
         @Override
         public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
             ResourceLocation texture = this.isHoveredOrFocused() ? ANGEL_BUTTON_HOVERED : ANGEL_BUTTON;
-
-            guiGraphics.blit(texture,
-                    this.getX(), this.getY(),
-                    0, 0,
-                    this.width, this.height,
-                    this.width, this.height);
+            if (texture != null) {
+                guiGraphics.blit(texture, this.getX(), this.getY(), 0, 0, this.width, this.height, this.width, this.height);
+            } else {
+                guiGraphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF44AA44);
+            }
         }
 
         @Override
@@ -206,12 +246,11 @@ public class ReviveMenuScreen extends Screen {
         @Override
         public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
             ResourceLocation texture = this.isHoveredOrFocused() ? LEFT_BUTTON_HOVERED : LEFT_BUTTON;
-
-            guiGraphics.blit(texture,
-                    this.getX(), this.getY(),
-                    0, 0,
-                    this.width, this.height,
-                    this.width, this.height);
+            if (texture != null) {
+                guiGraphics.blit(texture, this.getX(), this.getY(), 0, 0, this.width, this.height, this.width, this.height);
+            } else {
+                guiGraphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFFAA4444);
+            }
         }
 
         @Override
@@ -235,12 +274,11 @@ public class ReviveMenuScreen extends Screen {
         @Override
         public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
             ResourceLocation texture = this.isHoveredOrFocused() ? RIGHT_BUTTON_HOVERED : RIGHT_BUTTON;
-
-            guiGraphics.blit(texture,
-                    this.getX(), this.getY(),
-                    0, 0,
-                    this.width, this.height,
-                    this.width, this.height);
+            if (texture != null) {
+                guiGraphics.blit(texture, this.getX(), this.getY(), 0, 0, this.width, this.height, this.width, this.height);
+            } else {
+                guiGraphics.fill(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height, 0xFF4444AA);
+            }
         }
 
         @Override

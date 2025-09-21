@@ -15,6 +15,6 @@ public class NetworkHandler {
     );
 
     public static void register() {
-        INSTANCE.registerMessage(0, DeathDataPacket.class, DeathDataPacket::encode, DeathDataPacket::decode, DeathDataPacket::handle);
+        INSTANCE.registerMessage(0, DeathDataPacket.class, DeathDataPacket::toBytes, DeathDataPacket::new, DeathDataPacket::handle);
     }
 }

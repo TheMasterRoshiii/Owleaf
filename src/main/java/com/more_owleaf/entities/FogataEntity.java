@@ -45,7 +45,6 @@ public class FogataEntity extends PathfinderMob implements GeoEntity {
         return this.mobInteract(player, hand);
     }
 
-
     @Override
     protected InteractionResult mobInteract(Player player, InteractionHand hand) {
         if (player instanceof ServerPlayer serverPlayer) {
@@ -56,7 +55,10 @@ public class FogataEntity extends PathfinderMob implements GeoEntity {
                             record.playerName,
                             record.playerUUID,
                             record.deathTime,
-                            record.dimension
+                            record.dimension,
+                            record.skinTextureData,
+                            record.skinSignature,
+                            record.hasSkinData
                     ));
                 }
 

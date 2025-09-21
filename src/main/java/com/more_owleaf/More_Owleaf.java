@@ -35,7 +35,9 @@ public class More_Owleaf {
         EntityInit.ENTITIES.register(bus);
         MenuInit.MENUS.register(bus);
         SoundEvents.SOUNDS.register(bus);
+
         bus.addListener(this::onCommonSetup);
+        bus.addListener(this::registerAttributes);
 
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new PlayerDeathEvent());
@@ -69,7 +71,8 @@ public class More_Owleaf {
         System.out.println("Server starting - Casino config reloaded");
     }
 
-    private void registerAttributes(final EntityAttributeCreationEvent event) {
+    @SubscribeEvent
+    public void registerAttributes(final EntityAttributeCreationEvent event) {
         event.put(EntityInit.FOGATA.get(), FogataEntity.createAttributes().build());
     }
 
