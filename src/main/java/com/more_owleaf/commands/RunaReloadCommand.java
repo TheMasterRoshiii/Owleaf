@@ -27,8 +27,6 @@ public class RunaReloadCommand {
                     false
             );
 
-            RunaTradesConfig.printAllConfiguredRunas();
-
             boolean configLoaded = RunaTradesConfig.loadConfig();
 
             if (!configLoaded) {
@@ -43,6 +41,7 @@ public class RunaReloadCommand {
             for (ServerLevel level : context.getSource().getServer().getAllLevels()) {
                 for (Entity entity : level.getAllEntities()) {
                     if (entity instanceof RunaEntity runa) {
+                        runa.reloadTrades();
                         runasUpdated++;
                     }
                 }

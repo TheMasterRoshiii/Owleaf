@@ -64,25 +64,24 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         this.entityData.set(DATA_COLOR_VARIANT, variant);
     }
 
+    private String getRunaTypeKey() {
+        return "runa_" + getVariantName();
+    }
+
     private void loadTrades() {
         if (!this.level().isClientSide && (!tradesLoaded || this.offers.isEmpty())) {
             if (!RunaTradesConfig.isConfigLoaded()) {
                 RunaTradesConfig.loadConfig();
             }
 
-            this.offers = RunaTradesConfig.getTradesForRuna(this.getUUID());
+            this.offers = RunaTradesConfig.getTradesForRunaType(getRunaTypeKey());
 
             if (this.offers.isEmpty()) {
                 setupDefaultTrades();
-                RunaTradesConfig.setTradesForRuna(this.getUUID(), this.offers);
+                RunaTradesConfig.setTradesForRunaType(getRunaTypeKey(), this.offers);
             }
 
             tradesLoaded = true;
-            System.out.println("Trades loaded for runa " + this.getUUID() + ": " + this.offers.size() + " offers");
-            for (MerchantOffer offer : this.offers) {
-                System.out.println("Trade: " + offer.getBaseCostA().getItem() + " x" + offer.getBaseCostA().getCount() +
-                        " -> " + offer.getResult().getItem() + " x" + offer.getResult().getCount());
-            }
         }
     }
 
@@ -117,13 +116,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
                         this.getDisplayName()
                 ));
 
-                System.out.println("Opening merchant menu for player: " + player.getName().getString());
-                System.out.println("Available trades: " + this.offers.size());
-                System.out.println("Trading player: " + (this.getTradingPlayer() != null ? this.getTradingPlayer().getName().getString() : "null"));
-
             } catch (Exception e) {
-                System.err.println("Error opening merchant menu: " + e.getMessage());
-                e.printStackTrace();
                 this.setTradingPlayer(null);
                 return InteractionResult.FAIL;
             }
@@ -136,11 +129,6 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     @Override
     public void setTradingPlayer(@Nullable Player player) {
         this.tradingPlayer = player;
-        if (player != null) {
-            System.out.println("Trading player set: " + player.getName().getString());
-        } else {
-            System.out.println("Trading player cleared");
-        }
     }
 
     @Nullable
@@ -152,7 +140,6 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     @Override
     public MerchantOffers getOffers() {
         loadTrades();
-        System.out.println("getOffers() called, returning " + this.offers.size() + " offers");
         return this.offers;
     }
 
@@ -160,13 +147,11 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     public void overrideOffers(@Nullable MerchantOffers offers) {
         if (offers != null) {
             this.offers = offers;
-            System.out.println("Offers overridden with " + offers.size() + " trades");
         }
     }
 
     @Override
     public void notifyTrade(MerchantOffer offer) {
-        System.out.println("Trade executed: " + offer.getResult().getItem().toString());
         if (this.getTradingPlayer() != null) {
             this.level().playSound(null, this.blockPosition(), this.getNotifyTradeSound(),
                     net.minecraft.sounds.SoundSource.NEUTRAL, 1.0F, 1.0F);
@@ -276,6 +261,8 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         else if (type == EntityInit.RUNA_MORADA.get()) setColorVariant(VARIANT_PURPLE);
         else if (type == EntityInit.RUNA_ROJA.get()) setColorVariant(VARIANT_RED);
         else if (type == EntityInit.RUNA_VERDE.get()) setColorVariant(VARIANT_GREEN);
+
+        RunaTradesConfig.registerRunaType(getRunaTypeKey());
 
         tradesLoaded = false;
         this.offers.clear();

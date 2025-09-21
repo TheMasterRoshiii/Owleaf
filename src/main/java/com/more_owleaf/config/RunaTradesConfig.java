@@ -10,207 +10,296 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 public class RunaTradesConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = Path.of("config/more_owleaf/runa_trades.json");
-    private static final Map<UUID, MerchantOffers> RUNA_TRADES = new HashMap<>();
+    private static final Map<String, MerchantOffers> RUNA_TYPE_TRADES = new HashMap<>();
+    private static final Set<String> REGISTERED_RUNA_TYPES = new HashSet<>();
     private static boolean configLoaded = false;
 
-    public static boolean loadConfig() {
-        System.out.println("=== LOADING RUNA TRADES CONFIG ===");
-        System.out.println("Called from: " + Thread.currentThread().getStackTrace()[2].toString());
-        System.out.println("Config path: " + CONFIG_PATH.toAbsolutePath());
-        System.out.println("Current map size before clearing: " + RUNA_TRADES.size());
+    public static void registerRunaType(String runaType) {
+        REGISTERED_RUNA_TYPES.add(runaType);
+        if (configLoaded && !RUNA_TYPE_TRADES.containsKey(runaType)) {
+            RUNA_TYPE_TRADES.put(runaType, createDefaultTradesForType(runaType));
+            saveConfig();
+        }
+    }
 
+    public static boolean loadConfig() {
         try {
-            Map<UUID, MerchantOffers> backupTrades = new HashMap<>(RUNA_TRADES);
-            RUNA_TRADES.clear();
+            RUNA_TYPE_TRADES.clear();
 
             if (Files.exists(CONFIG_PATH)) {
-                System.out.println("Config file exists, reading...");
-
                 String jsonContent = Files.readString(CONFIG_PATH);
-                System.out.println("JSON Content length: " + jsonContent.length());
-                System.out.println("JSON Content: " + jsonContent);
 
-                if (jsonContent.trim().equals("{}")) {
-                    System.out.println("JSON file is empty, restoring backup trades...");
-                    RUNA_TRADES.putAll(backupTrades);
-                    saveConfig();
+                if (jsonContent.trim().equals("{}") || jsonContent.trim().isEmpty()) {
+                    createDefaultConfig();
                     configLoaded = true;
                     return true;
                 }
 
-                JsonObject json = GSON.fromJson(jsonContent, JsonObject.class);
-                System.out.println("JSON object parsed, keys: " + json.size());
-
-                int tradeCount = 0;
-                for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
-                    System.out.println("Processing entry: " + entry.getKey());
-                    try {
-                        UUID runaId = UUID.fromString(entry.getKey());
-                        JsonArray tradesArray = entry.getValue().getAsJsonArray();
-                        System.out.println("Trades array size: " + tradesArray.size());
-
-                        MerchantOffers offers = parseOffers(tradesArray);
-                        RUNA_TRADES.put(runaId, offers);
-                        tradeCount += offers.size();
-
-                        System.out.println("Successfully loaded " + offers.size() + " trades for runa: " + runaId);
-                    } catch (IllegalArgumentException e) {
-                        System.err.println("UUID inválido en configuración: " + entry.getKey());
-                        e.printStackTrace();
-                    } catch (Exception e) {
-                        System.err.println("Error processing entry " + entry.getKey() + ": " + e.getMessage());
-                        e.printStackTrace();
+                try {
+                    JsonObject json = GSON.fromJson(jsonContent, JsonObject.class);
+                    if (json == null) {
+                        createDefaultConfig();
+                        configLoaded = true;
+                        return true;
                     }
+
+                    for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
+                        String runaType = entry.getKey();
+
+                        if (!entry.getValue().isJsonArray()) {
+                            continue;
+                        }
+
+                        JsonArray tradesArray = entry.getValue().getAsJsonArray();
+                        MerchantOffers offers = parseOffersArray(tradesArray);
+
+                        if (!offers.isEmpty()) {
+                            RUNA_TYPE_TRADES.put(runaType, offers);
+                        }
+                    }
+
+                    ensureAllRunaTypesHaveConfig();
+
+                } catch (JsonSyntaxException e) {
+                    createDefaultConfig();
+                    configLoaded = true;
+                    return true;
                 }
-                System.out.println("Loaded " + tradeCount + " total trades for " + RUNA_TRADES.size() + " runas");
             } else {
-                System.out.println("Config file doesn't exist, creating default...");
                 createDefaultConfig();
-                System.out.println("Created new empty runa trades config");
             }
 
             configLoaded = true;
-            System.out.println("Config loading completed successfully");
-            System.out.println("Final map size: " + RUNA_TRADES.size());
-            System.out.println("=== END LOADING RUNA TRADES CONFIG ===");
             return true;
 
         } catch (Exception e) {
-            System.err.println("Error loading runa trades config: " + e.getMessage());
-            e.printStackTrace();
             createDefaultConfig();
             configLoaded = false;
             return false;
         }
     }
 
-    public static boolean isConfigLoaded() {
-        return configLoaded;
+    private static MerchantOffers parseOffersArray(JsonArray tradesArray) {
+        MerchantOffers offers = new MerchantOffers();
+
+        for (int i = 0; i < tradesArray.size(); i++) {
+            try {
+                if (!tradesArray.get(i).isJsonObject()) {
+                    continue;
+                }
+
+                JsonObject tradeObj = tradesArray.get(i).getAsJsonObject();
+                MerchantOffer offer = parseTradeObject(tradeObj);
+                if (offer != null) {
+                    offers.add(offer);
+                }
+            } catch (Exception e) {
+            }
+        }
+
+        return offers;
     }
 
-    public static int getLoadedRunaCount() {
-        return RUNA_TRADES.size();
-    }
-
-    public static void saveConfig() {
-        System.out.println("=== SAVING RUNA TRADES CONFIG ===");
+    private static MerchantOffer parseTradeObject(JsonObject tradeObj) {
         try {
-            Files.createDirectories(CONFIG_PATH.getParent());
-            JsonObject json = new JsonObject();
-
-            for (Map.Entry<UUID, MerchantOffers> entry : RUNA_TRADES.entrySet()) {
-                json.add(entry.getKey().toString(), serializeOffers(entry.getValue()));
-                System.out.println("Saved " + entry.getValue().size() + " trades for runa: " + entry.getKey());
+            if (!tradeObj.has("price1") || !tradeObj.has("result")) {
+                return null;
             }
 
-            String jsonString = GSON.toJson(json);
-            Files.writeString(CONFIG_PATH, jsonString);
-            System.out.println("Config saved to: " + CONFIG_PATH.toAbsolutePath());
-            System.out.println("Total entries saved: " + json.size());
+            if (!tradeObj.get("price1").isJsonObject() || !tradeObj.get("result").isJsonObject()) {
+                return null;
+            }
+
+            ItemStack price1 = parseItemStack(tradeObj.getAsJsonObject("price1"));
+            if (price1.isEmpty()) {
+                return null;
+            }
+
+            ItemStack price2 = ItemStack.EMPTY;
+            if (tradeObj.has("price2") && tradeObj.get("price2").isJsonObject()) {
+                JsonObject price2Obj = tradeObj.getAsJsonObject("price2");
+                if (price2Obj.has("item") && !price2Obj.get("item").getAsString().equals("minecraft:air")) {
+                    ItemStack parsedPrice2 = parseItemStack(price2Obj);
+                    if (!parsedPrice2.isEmpty()) {
+                        price2 = parsedPrice2;
+                    }
+                }
+            }
+
+            ItemStack result = parseItemStack(tradeObj.getAsJsonObject("result"));
+            if (result.isEmpty()) {
+                return null;
+            }
+
+            int maxUses = Integer.MAX_VALUE;
+            if (tradeObj.has("maxUses") && tradeObj.get("maxUses").isJsonPrimitive()) {
+                try {
+                    maxUses = tradeObj.get("maxUses").getAsInt();
+                } catch (Exception e) {
+                    maxUses = Integer.MAX_VALUE;
+                }
+            }
+
+            int xp = 0;
+            if (tradeObj.has("xp") && tradeObj.get("xp").isJsonPrimitive()) {
+                try {
+                    xp = tradeObj.get("xp").getAsInt();
+                } catch (Exception e) {
+                    xp = 0;
+                }
+            }
+
+            float priceMultiplier = 0.0f;
+            if (tradeObj.has("priceMultiplier") && tradeObj.get("priceMultiplier").isJsonPrimitive()) {
+                try {
+                    priceMultiplier = tradeObj.get("priceMultiplier").getAsFloat();
+                } catch (Exception e) {
+                    priceMultiplier = 0.0f;
+                }
+            }
+
+            return new MerchantOffer(price1, price2, result, maxUses, xp, priceMultiplier);
 
         } catch (Exception e) {
-            System.err.println("Error saving runa trades config: " + e.getMessage());
-            e.printStackTrace();
+            return null;
         }
-        System.out.println("=== END SAVING RUNA TRADES CONFIG ===");
+    }
+
+    private static void ensureAllRunaTypesHaveConfig() {
+        boolean needsSave = false;
+
+        for (String runaType : REGISTERED_RUNA_TYPES) {
+            if (!RUNA_TYPE_TRADES.containsKey(runaType)) {
+                RUNA_TYPE_TRADES.put(runaType, createDefaultTradesForType(runaType));
+                needsSave = true;
+            }
+        }
+
+        if (needsSave) {
+            saveConfig();
+        }
     }
 
     private static void createDefaultConfig() {
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
-            Files.writeString(CONFIG_PATH, "{}");
-            System.out.println("Created empty runa trades config at: " + CONFIG_PATH.toAbsolutePath());
+
+            Set<String> allRunaTypes = new HashSet<>(REGISTERED_RUNA_TYPES);
+            if (allRunaTypes.isEmpty()) {
+                allRunaTypes.addAll(Arrays.asList(
+                        "runa_amarilla", "runa_azul_claro", "runa_magenta",
+                        "runa_morada", "runa_roja", "runa_verde"
+                ));
+            }
+
+            JsonObject defaultConfig = new JsonObject();
+
+            for (String runaType : allRunaTypes) {
+                JsonArray tradesArray = createDefaultTradesJson(runaType);
+                defaultConfig.add(runaType, tradesArray);
+
+                MerchantOffers offers = parseOffersArray(tradesArray);
+                RUNA_TYPE_TRADES.put(runaType, offers);
+            }
+
+            Files.writeString(CONFIG_PATH, GSON.toJson(defaultConfig));
+
         } catch (Exception e) {
-            System.err.println("Error creating default config: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
-    public static MerchantOffers getTradesForRuna(UUID runaId) {
-        System.out.println("getTradesForRuna called for UUID: " + runaId);
-        System.out.println("Current RUNA_TRADES map size: " + RUNA_TRADES.size());
-        System.out.println("Config loaded status: " + configLoaded);
+    private static JsonArray createDefaultTradesJson(String runaType) {
+        JsonArray tradesArray = new JsonArray();
 
+        JsonObject trade1 = new JsonObject();
+        JsonObject price1_1 = new JsonObject();
+        price1_1.addProperty("item", "minecraft:emerald");
+        price1_1.addProperty("count", 1);
+        JsonObject result1 = new JsonObject();
+        result1.addProperty("item", "minecraft:diamond");
+        result1.addProperty("count", 1);
+        trade1.add("price1", price1_1);
+        trade1.add("result", result1);
+        trade1.addProperty("maxUses", Integer.MAX_VALUE);
+        trade1.addProperty("xp", 0);
+        trade1.addProperty("priceMultiplier", 0.0);
+        tradesArray.add(trade1);
+
+        JsonObject trade2 = new JsonObject();
+        JsonObject price1_2 = new JsonObject();
+        price1_2.addProperty("item", "minecraft:iron_ingot");
+        price1_2.addProperty("count", 3);
+        JsonObject result2 = new JsonObject();
+        result2.addProperty("item", "minecraft:emerald");
+        result2.addProperty("count", 1);
+        trade2.add("price1", price1_2);
+        trade2.add("result", result2);
+        trade2.addProperty("maxUses", Integer.MAX_VALUE);
+        trade2.addProperty("xp", 0);
+        trade2.addProperty("priceMultiplier", 0.0);
+        tradesArray.add(trade2);
+
+        return tradesArray;
+    }
+
+    private static MerchantOffers createDefaultTradesForType(String runaType) {
+        MerchantOffers offers = new MerchantOffers();
+
+        offers.add(new MerchantOffer(
+                new ItemStack(Items.EMERALD, 1),
+                ItemStack.EMPTY,
+                new ItemStack(Items.DIAMOND, 1),
+                Integer.MAX_VALUE, 0, 0.0f
+        ));
+
+        offers.add(new MerchantOffer(
+                new ItemStack(Items.IRON_INGOT, 3),
+                ItemStack.EMPTY,
+                new ItemStack(Items.EMERALD, 1),
+                Integer.MAX_VALUE, 0, 0.0f
+        ));
+
+        return offers;
+    }
+
+    public static MerchantOffers getTradesForRunaType(String runaType) {
         if (!configLoaded) {
-            System.out.println("Config not loaded, attempting to load...");
             loadConfig();
         }
 
-        boolean keyExists = RUNA_TRADES.containsKey(runaId);
-        System.out.println("Key exists in map: " + keyExists);
-
-        if (keyExists) {
-            MerchantOffers offers = RUNA_TRADES.get(runaId);
-            System.out.println("Found trades in map: " + offers.size());
-            return offers;
-        } else {
-            System.out.println("No trades found for UUID: " + runaId);
-            System.out.println("Available UUIDs in map:");
-            for (UUID uuid : RUNA_TRADES.keySet()) {
-                System.out.println("  - " + uuid + " (" + RUNA_TRADES.get(uuid).size() + " trades)");
-            }
-            return new MerchantOffers();
-        }
-    }
-
-    public static void setTradesForRuna(UUID runaId, MerchantOffers offers) {
-        System.out.println("setTradesForRuna(" + runaId + ") with " + offers.size() + " trades");
-        RUNA_TRADES.put(runaId, offers);
-        saveConfig();
-
-        System.out.println("Verification - RUNA_TRADES now contains: " + RUNA_TRADES.size() + " entries");
-        MerchantOffers verification = RUNA_TRADES.get(runaId);
-        System.out.println("Verification - Direct map lookup for " + runaId + ": " + (verification != null ? verification.size() : "null") + " trades");
-    }
-
-    public static void printAllConfiguredRunas() {
-        System.out.println("=== CONFIGURED RUNAS ===");
-        for (Map.Entry<UUID, MerchantOffers> entry : RUNA_TRADES.entrySet()) {
-            System.out.println("Runa " + entry.getKey() + ": " + entry.getValue().size() + " trades");
-        }
-        System.out.println("=== END CONFIGURED RUNAS ===");
-    }
-
-    private static MerchantOffers parseOffers(JsonArray jsonArray) {
-        MerchantOffers offers = new MerchantOffers();
-        System.out.println("Parsing " + jsonArray.size() + " offers from JSON");
-
-        for (int i = 0; i < jsonArray.size(); i++) {
-            try {
-                JsonElement element = jsonArray.get(i);
-                JsonObject trade = element.getAsJsonObject();
-
-                System.out.println("Parsing trade " + i + ": " + trade.toString());
-
-                ItemStack price1 = parseItemStack(trade.getAsJsonObject("price1"));
-                ItemStack price2 = trade.has("price2") ? parseItemStack(trade.getAsJsonObject("price2")) : ItemStack.EMPTY;
-                ItemStack result = parseItemStack(trade.getAsJsonObject("result"));
-
-                int maxUses = trade.get("maxUses").getAsInt();
-                int xp = trade.get("xp").getAsInt();
-                float priceMultiplier = trade.get("priceMultiplier").getAsFloat();
-
-                MerchantOffer offer = new MerchantOffer(price1, price2, result, maxUses, xp, priceMultiplier);
-                offers.add(offer);
-
-                System.out.println("Successfully parsed trade: " + price1.getDisplayName().getString() +
-                        " -> " + result.getDisplayName().getString());
-
-            } catch (Exception e) {
-                System.err.println("Error parsing trade " + i + ": " + e.getMessage());
-                e.printStackTrace();
-            }
+        MerchantOffers offers = RUNA_TYPE_TRADES.get(runaType);
+        if (offers == null || offers.isEmpty()) {
+            offers = createDefaultTradesForType(runaType);
+            RUNA_TYPE_TRADES.put(runaType, offers);
+            saveConfig();
         }
 
-        System.out.println("Finished parsing, total offers: " + offers.size());
         return offers;
+    }
+
+    public static void setTradesForRunaType(String runaType, MerchantOffers offers) {
+        RUNA_TYPE_TRADES.put(runaType, offers);
+        saveConfig();
+    }
+
+    public static void saveConfig() {
+        try {
+            Files.createDirectories(CONFIG_PATH.getParent());
+            JsonObject json = new JsonObject();
+
+            for (Map.Entry<String, MerchantOffers> entry : RUNA_TYPE_TRADES.entrySet()) {
+                json.add(entry.getKey(), serializeOffers(entry.getValue()));
+            }
+
+            Files.writeString(CONFIG_PATH, GSON.toJson(json));
+
+        } catch (Exception e) {
+        }
     }
 
     private static JsonArray serializeOffers(MerchantOffers offers) {
@@ -218,7 +307,9 @@ public class RunaTradesConfig {
         for (MerchantOffer offer : offers) {
             JsonObject trade = new JsonObject();
             trade.add("price1", serializeItemStack(offer.getBaseCostA()));
-            trade.add("price2", serializeItemStack(offer.getCostB()));
+            if (!offer.getCostB().isEmpty()) {
+                trade.add("price2", serializeItemStack(offer.getCostB()));
+            }
             trade.add("result", serializeItemStack(offer.getResult()));
             trade.addProperty("maxUses", offer.getMaxUses());
             trade.addProperty("xp", offer.getXp());
@@ -230,24 +321,29 @@ public class RunaTradesConfig {
 
     private static ItemStack parseItemStack(JsonObject json) {
         try {
-            String itemId = json.get("item").getAsString();
-            int count = json.get("count").getAsInt();
-
-            System.out.println("Parsing ItemStack: " + itemId + " x" + count);
-
-            Item item = ForgeRegistries.ITEMS.getValue(new net.minecraft.resources.ResourceLocation(itemId));
-            if (item == null || item == Items.AIR) {
-                System.err.println("Item not found or is AIR: " + itemId);
+            if (!json.has("item") || !json.has("count")) {
                 return ItemStack.EMPTY;
             }
 
-            ItemStack stack = new ItemStack(item, count);
-            System.out.println("Created ItemStack: " + stack.getDisplayName().getString() + " x" + stack.getCount());
-            return stack;
+            if (!json.get("item").isJsonPrimitive() || !json.get("count").isJsonPrimitive()) {
+                return ItemStack.EMPTY;
+            }
+
+            String itemId = json.get("item").getAsString().trim();
+            int count = json.get("count").getAsInt();
+
+            if (itemId.isEmpty() || itemId.equals("minecraft:air") || count <= 0) {
+                return ItemStack.EMPTY;
+            }
+
+            Item item = ForgeRegistries.ITEMS.getValue(new net.minecraft.resources.ResourceLocation(itemId));
+            if (item == null || item == Items.AIR) {
+                return ItemStack.EMPTY;
+            }
+
+            return new ItemStack(item, count);
 
         } catch (Exception e) {
-            System.err.println("Error parsing ItemStack from JSON: " + json.toString());
-            e.printStackTrace();
             return ItemStack.EMPTY;
         }
     }
@@ -262,5 +358,20 @@ public class RunaTradesConfig {
             json.addProperty("count", stack.getCount());
         }
         return json;
+    }
+
+    public static boolean isConfigLoaded() {
+        return configLoaded;
+    }
+
+    public static int getLoadedRunaCount() {
+        return RUNA_TYPE_TRADES.size();
+    }
+
+    public static MerchantOffers getTradesForRuna(UUID runaId) {
+        return new MerchantOffers();
+    }
+
+    public static void setTradesForRuna(UUID runaId, MerchantOffers offers) {
     }
 }
