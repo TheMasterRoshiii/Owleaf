@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="more_owleaf"
+version="1.0"
+displayName="More Owleaf"
+authors="NeonTheThinker"
+logoFile="assets/more_owleaf/icon.png"
+description='''Mod de Casinos, Ludopatia Pura.'''
+
+[[dependencies.more_owleaf]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.more_owleaf]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"

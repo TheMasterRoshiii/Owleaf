@@ -1,0 +1,12 @@
+{
+  "itemGroup.more_owleaf": "More Owleaf",
+
+  "entity.more_owleaf.casino": "Casino",
+  "entity.more_owleaf.bonfire": "Bonfire",
+
+  "more_owleaf.subtitle.casino_song": "Sonido de Casino",
+
+  "gui.more_owleaf.revive_menu": "Revive Menu",
+  
+  "message.more_owleaf.no_deaths": "No hay jugadores muertos para revivir"
+}

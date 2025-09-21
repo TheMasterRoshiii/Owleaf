@@ -1,0 +1,18 @@
+{
+  "casino_song": {
+    "category": "record",
+    "replace": false,
+    "subtitle": "more_owleaf.subtitle.casino_song",
+    "sounds": [
+      {
+        "name": "more_owleaf:casino_song",
+        "volume": 1.0,
+        "pitch": 1.0,
+        "weight": 1,
+        "stream": true,
+        "attenuation_distance": 16,
+        "preload": false
+      }
+    ]
+  }
+}
