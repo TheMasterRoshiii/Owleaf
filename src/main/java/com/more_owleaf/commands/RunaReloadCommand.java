@@ -47,7 +47,7 @@ public class RunaReloadCommand {
                         runa.reloadTrades();
                         runasUpdated++;
 
-                        // FORZAR SINCRONIZACIÓN si hay un jugador comerciando
+
                         if (runa.getTradingPlayer() instanceof ServerPlayer serverPlayer) {
                             if (serverPlayer.containerMenu instanceof MerchantMenu) {
                                 serverPlayer.connection.send(new ClientboundMerchantOffersPacket(
