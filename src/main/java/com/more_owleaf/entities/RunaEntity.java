@@ -1,9 +1,11 @@
 package com.more_owleaf.entities;
 
 import com.more_owleaf.config.RunaTradesConfig;
+import com.more_owleaf.entities.more.RunaMerchantMenu;
 import com.more_owleaf.init.EntityInit;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundMerchantOffersPacket;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -36,7 +38,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     private Player tradingPlayer;
-    private MerchantOffers offers = new MerchantOffers();
+    private MerchantOffers offers;
     private boolean tradesLoaded = false;
 
     public static final int VARIANT_YELLOW = 0;
@@ -49,6 +51,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     public RunaEntity(EntityType<?> type, Level level) {
         super(type, level);
         this.noCulling = true;
+        this.offers = new MerchantOffers();
     }
 
     @Override
@@ -69,16 +72,30 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     }
 
     private void loadTrades() {
-        if (!this.level().isClientSide && (!tradesLoaded || this.offers.isEmpty())) {
-            if (!RunaTradesConfig.isConfigLoaded()) {
-                RunaTradesConfig.loadConfig();
-            }
+        if (!this.level().isClientSide) {
+            RunaTradesConfig.ensureConfigExists();
 
-            this.offers = RunaTradesConfig.getTradesForRunaType(getRunaTypeKey());
+            String runaTypeKey = getRunaTypeKey();
+            MerchantOffers configOffers = RunaTradesConfig.getTradesForRunaType(runaTypeKey);
+
+            this.offers.clear();
+
+            for (MerchantOffer offer : configOffers) {
+                MerchantOffer newOffer = new MerchantOffer(
+                        offer.getBaseCostA().copy(),
+                        offer.getCostB().copy(),
+                        offer.getResult().copy(),
+                        0,
+                        offer.getMaxUses(),
+                        offer.getXp(),
+                        offer.getPriceMultiplier()
+                );
+                this.offers.add(newOffer);
+            }
 
             if (this.offers.isEmpty()) {
                 setupDefaultTrades();
-                RunaTradesConfig.setTradesForRunaType(getRunaTypeKey(), this.offers);
+                RunaTradesConfig.setTradesForRunaType(runaTypeKey, this.offers);
             }
 
             tradesLoaded = true;
@@ -88,7 +105,21 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     public void reloadTrades() {
         tradesLoaded = false;
         this.offers.clear();
+        RunaTradesConfig.forceReload();
         loadTrades();
+
+        if (this.getTradingPlayer() instanceof ServerPlayer serverPlayer) {
+            if (serverPlayer.containerMenu instanceof net.minecraft.world.inventory.MerchantMenu) {
+                serverPlayer.connection.send(new ClientboundMerchantOffersPacket(
+                        serverPlayer.containerMenu.containerId,
+                        this.offers,
+                        0,
+                        this.getVillagerXp(),
+                        this.showProgressBar(),
+                        this.canRestock()
+                ));
+            }
+        }
     }
 
     @Override
@@ -101,8 +132,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
             loadTrades();
 
             if (this.offers.isEmpty()) {
-                player.sendSystemMessage(Component.literal("§cEsta runa no tiene trades configurados"));
-                return InteractionResult.FAIL;
+                setupDefaultTrades();
             }
 
             this.setTradingPlayer(player);
@@ -110,11 +140,23 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
             try {
                 serverPlayer.openMenu(new SimpleMenuProvider(
                         (containerId, playerInventory, playerEntity) -> {
-                            net.minecraft.world.inventory.MerchantMenu menu = new net.minecraft.world.inventory.MerchantMenu(containerId, playerInventory, this);
-                            return menu;
+                            return new net.minecraft.world.inventory.MerchantMenu(containerId, playerInventory, this);
                         },
                         this.getDisplayName()
                 ));
+
+                this.level().getServer().execute(() -> {
+                    if (serverPlayer.containerMenu instanceof net.minecraft.world.inventory.MerchantMenu) {
+                        serverPlayer.connection.send(new ClientboundMerchantOffersPacket(
+                                serverPlayer.containerMenu.containerId,
+                                this.offers,
+                                0,
+                                this.getVillagerXp(),
+                                this.showProgressBar(),
+                                this.canRestock()
+                        ));
+                    }
+                });
 
             } catch (Exception e) {
                 this.setTradingPlayer(null);
@@ -139,7 +181,9 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
 
     @Override
     public MerchantOffers getOffers() {
-        loadTrades();
+        if (!this.level().isClientSide && (!tradesLoaded || this.offers.isEmpty())) {
+            loadTrades();
+        }
         return this.offers;
     }
 
@@ -147,6 +191,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     public void overrideOffers(@Nullable MerchantOffers offers) {
         if (offers != null) {
             this.offers = offers;
+            tradesLoaded = true;
         }
     }
 
@@ -172,6 +217,11 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
 
     @Override
     public boolean showProgressBar() {
+        return false;
+    }
+
+    @Override
+    public boolean canRestock() {
         return false;
     }
 
@@ -207,12 +257,19 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         if (compound.contains("ColorVariant")) {
             setColorVariant(compound.getInt("ColorVariant"));
         }
-        tradesLoaded = false;
+
+        if (compound.contains("Offers")) {
+            this.offers = new MerchantOffers(compound.getCompound("Offers"));
+            tradesLoaded = true;
+        } else {
+            tradesLoaded = false;
+        }
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag compound) {
         compound.putInt("ColorVariant", getColorVariant());
+        compound.put("Offers", this.offers.createTag());
     }
 
     @Override
@@ -264,19 +321,43 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
 
         RunaTradesConfig.registerRunaType(getRunaTypeKey());
 
-        tradesLoaded = false;
-        this.offers.clear();
+        if (!this.level().isClientSide) {
+            tradesLoaded = false;
+            this.offers.clear();
+            loadTrades();
+        }
     }
 
     private void setupDefaultTrades() {
         this.offers.clear();
 
+        this.offers.add(new MerchantOffer(
+                new ItemStack(Items.EMERALD, 1),
+                ItemStack.EMPTY,
+                new ItemStack(Items.DIAMOND, 1),
+                Integer.MAX_VALUE, 0, 0.0f
+        ));
+
+        this.offers.add(new MerchantOffer(
+                new ItemStack(Items.IRON_INGOT, 3),
+                ItemStack.EMPTY,
+                new ItemStack(Items.EMERALD, 1),
+                Integer.MAX_VALUE, 0, 0.0f
+        ));
+
+        this.offers.add(new MerchantOffer(
+                new ItemStack(Items.COAL, 8),
+                new ItemStack(Items.STICK, 4),
+                new ItemStack(Items.TORCH, 16),
+                Integer.MAX_VALUE, 0, 0.0f
+        ));
+
         switch (getColorVariant()) {
             case VARIANT_YELLOW:
                 this.offers.add(new MerchantOffer(
-                        new ItemStack(Items.EMERALD, 1),
+                        new ItemStack(Items.GOLD_INGOT, 2),
                         ItemStack.EMPTY,
-                        new ItemStack(Items.GOLD_INGOT, 3),
+                        new ItemStack(Items.EMERALD, 3),
                         Integer.MAX_VALUE, 0, 0.0f
                 ));
                 break;
@@ -284,13 +365,13 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
                 this.offers.add(new MerchantOffer(
                         new ItemStack(Items.DIAMOND, 1),
                         ItemStack.EMPTY,
-                        new ItemStack(Items.EMERALD, 2),
+                        new ItemStack(Items.EMERALD, 4),
                         Integer.MAX_VALUE, 0, 0.0f
                 ));
                 break;
             case VARIANT_MAGENTA:
                 this.offers.add(new MerchantOffer(
-                        new ItemStack(Items.REDSTONE, 10),
+                        new ItemStack(Items.REDSTONE, 8),
                         ItemStack.EMPTY,
                         new ItemStack(Items.DIAMOND, 1),
                         Integer.MAX_VALUE, 0, 0.0f
@@ -300,31 +381,23 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
                 this.offers.add(new MerchantOffer(
                         new ItemStack(Items.ENDER_PEARL, 1),
                         ItemStack.EMPTY,
-                        new ItemStack(Items.EXPERIENCE_BOTTLE, 5),
+                        new ItemStack(Items.EXPERIENCE_BOTTLE, 3),
                         Integer.MAX_VALUE, 0, 0.0f
                 ));
                 break;
             case VARIANT_RED:
                 this.offers.add(new MerchantOffer(
-                        new ItemStack(Items.IRON_INGOT, 3),
+                        new ItemStack(Items.IRON_INGOT, 4),
                         ItemStack.EMPTY,
-                        new ItemStack(Items.REDSTONE, 10),
+                        new ItemStack(Items.REDSTONE, 8),
                         Integer.MAX_VALUE, 0, 0.0f
                 ));
                 break;
             case VARIANT_GREEN:
                 this.offers.add(new MerchantOffer(
-                        new ItemStack(Items.WHEAT, 20),
+                        new ItemStack(Items.WHEAT, 16),
                         ItemStack.EMPTY,
                         new ItemStack(Items.EMERALD, 1),
-                        Integer.MAX_VALUE, 0, 0.0f
-                ));
-                break;
-            default:
-                this.offers.add(new MerchantOffer(
-                        new ItemStack(Items.IRON_INGOT, 1),
-                        ItemStack.EMPTY,
-                        new ItemStack(Items.COAL, 5),
                         Integer.MAX_VALUE, 0, 0.0f
                 ));
                 break;

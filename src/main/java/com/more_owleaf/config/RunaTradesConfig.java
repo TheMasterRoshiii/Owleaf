@@ -21,9 +21,21 @@ public class RunaTradesConfig {
 
     public static void registerRunaType(String runaType) {
         REGISTERED_RUNA_TYPES.add(runaType);
-        if (configLoaded && !RUNA_TYPE_TRADES.containsKey(runaType)) {
+        if (!RUNA_TYPE_TRADES.containsKey(runaType)) {
             RUNA_TYPE_TRADES.put(runaType, createDefaultTradesForType(runaType));
-            saveConfig();
+            if (configLoaded) {
+                saveConfig();
+            }
+        }
+    }
+
+    public static void ensureConfigExists() {
+        if (!configLoaded) {
+            loadConfig();
+        }
+
+        if (RUNA_TYPE_TRADES.isEmpty()) {
+            createDefaultConfig();
         }
     }
 
@@ -79,7 +91,7 @@ public class RunaTradesConfig {
 
         } catch (Exception e) {
             createDefaultConfig();
-            configLoaded = false;
+            configLoaded = true;
             return false;
         }
     }
@@ -107,67 +119,131 @@ public class RunaTradesConfig {
 
     private static MerchantOffer parseTradeObject(JsonObject tradeObj) {
         try {
-            if (!tradeObj.has("price1") || !tradeObj.has("result")) {
-                return null;
+            if (tradeObj.has("input1") && tradeObj.has("result")) {
+                return parseNewFormatTrade(tradeObj);
             }
 
-            if (!tradeObj.get("price1").isJsonObject() || !tradeObj.get("result").isJsonObject()) {
-                return null;
+            if (tradeObj.has("inputs") && tradeObj.has("result")) {
+                return parseInputsArrayTrade(tradeObj);
             }
 
-            ItemStack price1 = parseItemStack(tradeObj.getAsJsonObject("price1"));
-            if (price1.isEmpty()) {
-                return null;
-            }
-
-            ItemStack price2 = ItemStack.EMPTY;
-            if (tradeObj.has("price2") && tradeObj.get("price2").isJsonObject()) {
-                JsonObject price2Obj = tradeObj.getAsJsonObject("price2");
-                if (price2Obj.has("item") && !price2Obj.get("item").getAsString().equals("minecraft:air")) {
-                    ItemStack parsedPrice2 = parseItemStack(price2Obj);
-                    if (!parsedPrice2.isEmpty()) {
-                        price2 = parsedPrice2;
-                    }
-                }
-            }
-
-            ItemStack result = parseItemStack(tradeObj.getAsJsonObject("result"));
-            if (result.isEmpty()) {
-                return null;
-            }
-
-            int maxUses = Integer.MAX_VALUE;
-            if (tradeObj.has("maxUses") && tradeObj.get("maxUses").isJsonPrimitive()) {
-                try {
-                    maxUses = tradeObj.get("maxUses").getAsInt();
-                } catch (Exception e) {
-                    maxUses = Integer.MAX_VALUE;
-                }
-            }
-
-            int xp = 0;
-            if (tradeObj.has("xp") && tradeObj.get("xp").isJsonPrimitive()) {
-                try {
-                    xp = tradeObj.get("xp").getAsInt();
-                } catch (Exception e) {
-                    xp = 0;
-                }
-            }
-
-            float priceMultiplier = 0.0f;
-            if (tradeObj.has("priceMultiplier") && tradeObj.get("priceMultiplier").isJsonPrimitive()) {
-                try {
-                    priceMultiplier = tradeObj.get("priceMultiplier").getAsFloat();
-                } catch (Exception e) {
-                    priceMultiplier = 0.0f;
-                }
-            }
-
-            return new MerchantOffer(price1, price2, result, maxUses, xp, priceMultiplier);
+            return parseOriginalFormatTrade(tradeObj);
 
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static MerchantOffer parseNewFormatTrade(JsonObject tradeObj) {
+        ItemStack input1 = parseItemStack(tradeObj.getAsJsonObject("input1"));
+        if (input1.isEmpty()) return null;
+
+        ItemStack input2 = ItemStack.EMPTY;
+        if (tradeObj.has("input2") && tradeObj.get("input2").isJsonObject()) {
+            JsonObject input2Obj = tradeObj.getAsJsonObject("input2");
+            if (input2Obj.has("item") && !input2Obj.get("item").getAsString().equals("minecraft:air")) {
+                ItemStack parsedInput2 = parseItemStack(input2Obj);
+                if (!parsedInput2.isEmpty()) {
+                    input2 = parsedInput2;
+                }
+            }
+        }
+
+        ItemStack result = parseItemStack(tradeObj.getAsJsonObject("result"));
+        if (result.isEmpty()) return null;
+
+        int maxUses = getIntFromJson(tradeObj, "maxUses", Integer.MAX_VALUE);
+        int xp = getIntFromJson(tradeObj, "xp", 0);
+        float priceMultiplier = getFloatFromJson(tradeObj, "priceMultiplier", 0.0f);
+
+        return new MerchantOffer(input1, input2, result, maxUses, xp, priceMultiplier);
+    }
+
+    private static MerchantOffer parseInputsArrayTrade(JsonObject tradeObj) {
+        JsonArray inputsArray = tradeObj.getAsJsonArray("inputs");
+        if (inputsArray.size() == 0) return null;
+
+        ItemStack input1 = parseItemStack(inputsArray.get(0).getAsJsonObject());
+        if (input1.isEmpty()) return null;
+
+        ItemStack input2 = ItemStack.EMPTY;
+        if (inputsArray.size() >= 2) {
+            JsonObject input2Obj = inputsArray.get(1).getAsJsonObject();
+            if (input2Obj.has("item") && !input2Obj.get("item").getAsString().equals("minecraft:air")) {
+                ItemStack parsedInput2 = parseItemStack(input2Obj);
+                if (!parsedInput2.isEmpty()) {
+                    input2 = parsedInput2;
+                }
+            }
+        }
+
+        ItemStack result = parseItemStack(tradeObj.getAsJsonObject("result"));
+        if (result.isEmpty()) return null;
+
+        int maxUses = getIntFromJson(tradeObj, "maxUses", Integer.MAX_VALUE);
+        int xp = getIntFromJson(tradeObj, "xp", 0);
+        float priceMultiplier = getFloatFromJson(tradeObj, "priceMultiplier", 0.0f);
+
+        return new MerchantOffer(input1, input2, result, maxUses, xp, priceMultiplier);
+    }
+
+    private static MerchantOffer parseOriginalFormatTrade(JsonObject tradeObj) {
+        if (!tradeObj.has("price1") || !tradeObj.has("result")) {
+            return null;
+        }
+
+        if (!tradeObj.get("price1").isJsonObject() || !tradeObj.get("result").isJsonObject()) {
+            return null;
+        }
+
+        ItemStack price1 = parseItemStack(tradeObj.getAsJsonObject("price1"));
+        if (price1.isEmpty()) {
+            return null;
+        }
+
+        ItemStack price2 = ItemStack.EMPTY;
+        if (tradeObj.has("price2") && tradeObj.get("price2").isJsonObject()) {
+            JsonObject price2Obj = tradeObj.getAsJsonObject("price2");
+            if (price2Obj.has("item") && !price2Obj.get("item").getAsString().equals("minecraft:air")) {
+                ItemStack parsedPrice2 = parseItemStack(price2Obj);
+                if (!parsedPrice2.isEmpty()) {
+                    price2 = parsedPrice2;
+                }
+            }
+        }
+
+        ItemStack result = parseItemStack(tradeObj.getAsJsonObject("result"));
+        if (result.isEmpty()) {
+            return null;
+        }
+
+        int maxUses = getIntFromJson(tradeObj, "maxUses", Integer.MAX_VALUE);
+        int xp = getIntFromJson(tradeObj, "xp", 0);
+        float priceMultiplier = getFloatFromJson(tradeObj, "priceMultiplier", 0.0f);
+
+        return new MerchantOffer(price1, price2, result, maxUses, xp, priceMultiplier);
+    }
+
+    private static int getIntFromJson(JsonObject obj, String key, int defaultValue) {
+        if (obj.has(key) && obj.get(key).isJsonPrimitive()) {
+            try {
+                return obj.get(key).getAsInt();
+            } catch (Exception e) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
+    }
+
+    private static float getFloatFromJson(JsonObject obj, String key, float defaultValue) {
+        if (obj.has(key) && obj.get(key).isJsonPrimitive()) {
+            try {
+                return obj.get(key).getAsFloat();
+            } catch (Exception e) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 
     private static void ensureAllRunaTypesHaveConfig() {
@@ -217,13 +293,13 @@ public class RunaTradesConfig {
         JsonArray tradesArray = new JsonArray();
 
         JsonObject trade1 = new JsonObject();
-        JsonObject price1_1 = new JsonObject();
-        price1_1.addProperty("item", "minecraft:emerald");
-        price1_1.addProperty("count", 1);
+        JsonObject input1_1 = new JsonObject();
+        input1_1.addProperty("item", "minecraft:emerald");
+        input1_1.addProperty("count", 1);
         JsonObject result1 = new JsonObject();
         result1.addProperty("item", "minecraft:diamond");
         result1.addProperty("count", 1);
-        trade1.add("price1", price1_1);
+        trade1.add("input1", input1_1);
         trade1.add("result", result1);
         trade1.addProperty("maxUses", Integer.MAX_VALUE);
         trade1.addProperty("xp", 0);
@@ -231,13 +307,17 @@ public class RunaTradesConfig {
         tradesArray.add(trade1);
 
         JsonObject trade2 = new JsonObject();
-        JsonObject price1_2 = new JsonObject();
-        price1_2.addProperty("item", "minecraft:iron_ingot");
-        price1_2.addProperty("count", 3);
+        JsonObject input1_2 = new JsonObject();
+        input1_2.addProperty("item", "minecraft:iron_ingot");
+        input1_2.addProperty("count", 2);
+        JsonObject input2_2 = new JsonObject();
+        input2_2.addProperty("item", "minecraft:coal");
+        input2_2.addProperty("count", 3);
         JsonObject result2 = new JsonObject();
         result2.addProperty("item", "minecraft:emerald");
         result2.addProperty("count", 1);
-        trade2.add("price1", price1_2);
+        trade2.add("input1", input1_2);
+        trade2.add("input2", input2_2);
         trade2.add("result", result2);
         trade2.addProperty("maxUses", Integer.MAX_VALUE);
         trade2.addProperty("xp", 0);
@@ -258,8 +338,8 @@ public class RunaTradesConfig {
         ));
 
         offers.add(new MerchantOffer(
-                new ItemStack(Items.IRON_INGOT, 3),
-                ItemStack.EMPTY,
+                new ItemStack(Items.IRON_INGOT, 2),
+                new ItemStack(Items.COAL, 3),
                 new ItemStack(Items.EMERALD, 1),
                 Integer.MAX_VALUE, 0, 0.0f
         ));
@@ -279,7 +359,7 @@ public class RunaTradesConfig {
             saveConfig();
         }
 
-        return offers;
+        return new MerchantOffers(offers.createTag());
     }
 
     public static void setTradesForRunaType(String runaType, MerchantOffers offers) {
@@ -306,9 +386,9 @@ public class RunaTradesConfig {
         JsonArray array = new JsonArray();
         for (MerchantOffer offer : offers) {
             JsonObject trade = new JsonObject();
-            trade.add("price1", serializeItemStack(offer.getBaseCostA()));
+            trade.add("input1", serializeItemStack(offer.getBaseCostA()));
             if (!offer.getCostB().isEmpty()) {
-                trade.add("price2", serializeItemStack(offer.getCostB()));
+                trade.add("input2", serializeItemStack(offer.getCostB()));
             }
             trade.add("result", serializeItemStack(offer.getResult()));
             trade.addProperty("maxUses", offer.getMaxUses());
@@ -373,5 +453,11 @@ public class RunaTradesConfig {
     }
 
     public static void setTradesForRuna(UUID runaId, MerchantOffers offers) {
+    }
+
+    public static void forceReload() {
+        configLoaded = false;
+        RUNA_TYPE_TRADES.clear();
+        loadConfig();
     }
 }

@@ -8,8 +8,11 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundMerchantOffersPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.inventory.MerchantMenu;
 
 public class RunaReloadCommand {
 
@@ -43,6 +46,20 @@ public class RunaReloadCommand {
                     if (entity instanceof RunaEntity runa) {
                         runa.reloadTrades();
                         runasUpdated++;
+
+                        // FORZAR SINCRONIZACIÓN si hay un jugador comerciando
+                        if (runa.getTradingPlayer() instanceof ServerPlayer serverPlayer) {
+                            if (serverPlayer.containerMenu instanceof MerchantMenu) {
+                                serverPlayer.connection.send(new ClientboundMerchantOffersPacket(
+                                        serverPlayer.containerMenu.containerId,
+                                        runa.getOffers(),
+                                        0,
+                                        runa.getVillagerXp(),
+                                        runa.showProgressBar(),
+                                        runa.canRestock()
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -53,7 +70,8 @@ public class RunaReloadCommand {
             context.getSource().sendSuccess(() ->
                             Component.literal("§aConfiguración de trades de runas recargada correctamente")
                                     .append("\n§7Runas configuradas en archivo: " + finalLoadedRunaCount)
-                                    .append("\n§7Runas encontradas en el mundo: " + finalRunasUpdated),
+                                    .append("\n§7Runas encontradas en el mundo: " + finalRunasUpdated)
+                                    .append("\n§7Trades sincronizados con jugadores activos"),
                     true
             );
 

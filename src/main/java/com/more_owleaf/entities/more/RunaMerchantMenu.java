@@ -17,6 +17,6 @@ public class RunaMerchantMenu extends MerchantMenu {
 
     @Override
     public boolean stillValid(Player player) {
-        return true;
+        return super.stillValid(player);
     }
 }
