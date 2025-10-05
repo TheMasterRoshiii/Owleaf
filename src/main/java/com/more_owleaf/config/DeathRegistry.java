@@ -11,10 +11,7 @@ import net.minecraft.world.entity.player.Player;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class DeathRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -23,6 +20,7 @@ public class DeathRegistry {
 
     private List<DeathRecord> deathRecords = new ArrayList<>();
     private Set<String> ignoredPlayers = new HashSet<>();
+    private Map<String, Integer> playerLives = new HashMap<>();
 
     public static class DeathRecord {
         public String playerName;
@@ -32,9 +30,10 @@ public class DeathRegistry {
         public String skinTextureData;
         public String skinSignature;
         public boolean hasSkinData;
+        public int remainingLives;
 
         public DeathRecord(String playerName, String playerUUID, String deathTime, String dimension,
-                           String skinTextureData, String skinSignature, boolean hasSkinData) {
+                           String skinTextureData, String skinSignature, boolean hasSkinData, int remainingLives) {
             this.playerName = playerName;
             this.playerUUID = playerUUID;
             this.deathTime = deathTime;
@@ -42,16 +41,14 @@ public class DeathRegistry {
             this.skinTextureData = skinTextureData;
             this.skinSignature = skinSignature;
             this.hasSkinData = hasSkinData;
-        }
-
-        public DeathRecord(String playerName, String playerUUID, String deathTime, String dimension) {
-            this(playerName, playerUUID, deathTime, dimension, "", "", false);
+            this.remainingLives = remainingLives;
         }
     }
 
     public static class DeathRegistryConfig {
         public List<DeathRecord> deaths = new ArrayList<>();
         public Set<String> ignoredPlayers = new HashSet<>();
+        public Map<String, Integer> playerLives = new HashMap<>();
     }
 
     public void loadConfig() {
@@ -62,6 +59,7 @@ public class DeathRegistry {
                 if (config != null) {
                     this.deathRecords = config.deaths != null ? config.deaths : new ArrayList<>();
                     this.ignoredPlayers = config.ignoredPlayers != null ? config.ignoredPlayers : new HashSet<>();
+                    this.playerLives = config.playerLives != null ? config.playerLives : new HashMap<>();
                 }
             }
         } catch (IOException e) {
@@ -75,6 +73,7 @@ public class DeathRegistry {
             DeathRegistryConfig config = new DeathRegistryConfig();
             config.deaths = this.deathRecords;
             config.ignoredPlayers = this.ignoredPlayers;
+            config.playerLives = this.playerLives;
             Files.writeString(CONFIG_PATH, GSON.toJson(config));
         } catch (IOException e) {
             System.err.println("Failed to save death registry: " + e.getMessage());
@@ -85,9 +84,28 @@ public class DeathRegistry {
         if (!(player instanceof ServerPlayer serverPlayer)) return;
 
         String playerName = player.getName().getString();
-        if (ignoredPlayers.contains(playerName)) return;
-
         String playerUUID = player.getUUID().toString();
+
+        if (ignoredPlayers.contains(playerName) || ignoredPlayers.contains(playerUUID)) {
+            return;
+        }
+
+        // Reducir vidas
+        int currentLives = getPlayerLives(playerUUID);
+        currentLives--;
+
+        if (currentLives < 0) {
+            return; // Ya no tiene vidas
+        }
+
+        playerLives.put(playerUUID, currentLives);
+
+        // Solo registrar en la lista de muertos si las vidas llegaron a 0
+        if (currentLives > 0) {
+            saveConfig();
+            return;
+        }
+
         String deathTime = java.time.LocalDateTime.now().toString();
         String dimension = player.level().dimension().location().toString();
 
@@ -106,11 +124,10 @@ public class DeathRegistry {
                 }
             }
         } catch (Exception e) {
-            System.err.println("[Owleaf] Error capturing skin data for " + playerName + ": " + e.getMessage());
         }
 
         DeathRecord record = new DeathRecord(playerName, playerUUID, deathTime, dimension,
-                skinTextureData, skinSignature, hasSkinData);
+                skinTextureData, skinSignature, hasSkinData, currentLives);
         deathRecords.add(0, record);
 
         if (deathRecords.size() > MAX_DEATHS) {
@@ -120,8 +137,39 @@ public class DeathRegistry {
         saveConfig();
     }
 
+    public int getPlayerLives(String playerUUID) {
+        return playerLives.getOrDefault(playerUUID, FogataConfig.COMMON.vidasIniciales.get());
+    }
+
+    public void setPlayerLives(String playerUUID, int lives) {
+        playerLives.put(playerUUID, lives);
+        saveConfig();
+    }
+
+    public void addIgnoredPlayer(String identifier) {
+        ignoredPlayers.add(identifier);
+        saveConfig();
+    }
+
+    public void removeIgnoredPlayer(String identifier) {
+        ignoredPlayers.remove(identifier);
+        saveConfig();
+    }
+
+    public void removeDeathRecord(String playerUUID) {
+        deathRecords.removeIf(record -> record.playerUUID.equals(playerUUID));
+        saveConfig();
+    }
 
     public List<DeathRecord> getDeathRecords() {
         return new ArrayList<>(deathRecords);
+    }
+
+    public Set<String> getIgnoredPlayers() {
+        return new HashSet<>(ignoredPlayers);
+    }
+
+    public Map<String, Integer> getPlayerLivesMap() {
+        return new HashMap<>(playerLives);
     }
 }

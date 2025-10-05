@@ -24,7 +24,7 @@ public class CasinoConfig {
     public static int SEMI_WINNING_CHANCE = 30;
     public static int LOSING_CHANCE = 60;
 
-    public static Item INTERACTION_ITEM = Items.PAPER;
+    public static Item INTERACTION_ITEM = Items.BEDROCK;
     public static int PRIZE_COOLDOWN_TICKS = 100;
 
     public static boolean CASINO_ENABLED = true;
@@ -128,7 +128,6 @@ public class CasinoConfig {
                 PRIZE_COOLDOWN_TICKS = getIntValue(settings, "prize_cooldown_seconds", 5) * 20;
                 if (PRIZE_COOLDOWN_TICKS < 0) PRIZE_COOLDOWN_TICKS = 100;
 
-                // Nueva: Cargar estado del casino
                 CASINO_ENABLED = getBooleanValue(settings, "casino_enabled", true);
             } else {
                 INTERACTION_ITEM = Items.PAPER;

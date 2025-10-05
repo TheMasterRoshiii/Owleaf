@@ -51,21 +51,21 @@ public class EntityInit {
     public static final RegistryObject<EntityType<RunaEntity>> RUNA_MORADA = ENTITIES.register(
             "runa_morada",
             () -> EntityType.Builder.of(RunaEntity::new, MobCategory.MISC)
-                    .sized(1.0f, 0.5f)
+                    .sized(1.0f, 2.0f)
                     .clientTrackingRange(10)
                     .build("runa_morada"));
 
     public static final RegistryObject<EntityType<RunaEntity>> RUNA_ROJA = ENTITIES.register(
             "runa_roja",
             () -> EntityType.Builder.of(RunaEntity::new, MobCategory.MISC)
-                    .sized(1.0f, 0.5f)
+                    .sized(1.0f, 2.0f)
                     .clientTrackingRange(10)
                     .build("runa_roja"));
 
     public static final RegistryObject<EntityType<RunaEntity>> RUNA_VERDE = ENTITIES.register(
             "runa_verde",
             () -> EntityType.Builder.of(RunaEntity::new, MobCategory.MISC)
-                    .sized(1.0f, 0.5f)
+                    .sized(1.0f, 2.0f)
                     .clientTrackingRange(10)
                     .build("runa_verde"));
 }

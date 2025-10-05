@@ -15,6 +15,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -250,7 +251,11 @@ public class CasinoEntity extends Entity implements GeoEntity {
                 return InteractionResult.FAIL;
             }
 
-            if (heldItem.getItem() == CasinoConfig.INTERACTION_ITEM && !isSpinning() && spinCooldown <= 0) {
+            boolean isValidItem = !heldItem.isEmpty() &&
+                    heldItem.getItem() != Items.AIR &&
+                    heldItem.getItem() == CasinoConfig.INTERACTION_ITEM;
+
+            if (isValidItem && !isSpinning() && spinCooldown <= 0) {
 
                 if (!player.isCreative()) {
                     heldItem.shrink(1);
@@ -272,15 +277,31 @@ public class CasinoEntity extends Entity implements GeoEntity {
 
                 return InteractionResult.SUCCESS;
             }
+
+            if (heldItem.isEmpty() || heldItem.getItem() == Items.AIR) {
+                return InteractionResult.FAIL;
+            }
+
+            if (heldItem.getItem() != CasinoConfig.INTERACTION_ITEM) {
+                return InteractionResult.FAIL;
+            }
+
+            if (isSpinning()) {
+                return InteractionResult.FAIL;
+            }
+
+            if (spinCooldown > 0) {
+                return InteractionResult.FAIL;
+            }
         }
 
         if (this.level().isClientSide && hand == InteractionHand.MAIN_HAND) {
             ItemStack heldItem = player.getItemInHand(hand);
 
-            if (heldItem.getItem() == CasinoConfig.INTERACTION_ITEM &&
+            if (!heldItem.isEmpty() &&
+                    heldItem.getItem() != Items.AIR &&
                     !isSpinning() &&
-                    spinCooldown <= 0 &&
-                    CasinoConfig.CASINO_ENABLED) {
+                    spinCooldown <= 0) {
 
                 this.triggerAnim("spin_controller", getCurrentSpinType());
                 return InteractionResult.SUCCESS;

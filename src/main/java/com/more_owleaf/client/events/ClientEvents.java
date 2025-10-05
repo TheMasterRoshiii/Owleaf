@@ -15,5 +15,6 @@ public class ClientEvents {
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (event.getTarget() instanceof FogataEntity && event.getHand() == InteractionHand.MAIN_HAND) {
         }
+        
     }
 }

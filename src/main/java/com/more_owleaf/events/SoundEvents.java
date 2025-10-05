@@ -14,7 +14,7 @@ public class SoundEvents {
             DeferredRegister.create(ForgeRegistries.SOUND_EVENTS, MODID);
 
     public static final RegistryObject<SoundEvent> CASINO_SONG = registerSound("casino_song");
-
+    public static final RegistryObject<SoundEvent> REVIVIR_SONG = registerSound("revivir_song");
     private static RegistryObject<SoundEvent> registerSound(String name) {
         return SOUNDS.register(name, () ->
                 SoundEvent.createVariableRangeEvent(new ResourceLocation(MODID, name)));

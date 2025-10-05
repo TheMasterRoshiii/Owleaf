@@ -1,7 +1,6 @@
 package com.more_owleaf.entities;
 
 import com.more_owleaf.config.RunaTradesConfig;
-import com.more_owleaf.entities.more.RunaMerchantMenu;
 import com.more_owleaf.init.EntityInit;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -32,9 +31,11 @@ import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import javax.annotation.Nullable;
+import java.util.UUID;
 
 public class RunaEntity extends Entity implements GeoEntity, Merchant {
     private static final EntityDataAccessor<Integer> DATA_COLOR_VARIANT = SynchedEntityData.defineId(RunaEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<ItemStack> DATA_ITEM_RENDERER = SynchedEntityData.defineId(RunaEntity.class, EntityDataSerializers.ITEM_STACK);
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     private Player tradingPlayer;
@@ -52,11 +53,13 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         super(type, level);
         this.noCulling = true;
         this.offers = new MerchantOffers();
+        this.entityData.set(DATA_ITEM_RENDERER, ItemStack.EMPTY);
     }
 
     @Override
     protected void defineSynchedData() {
         this.entityData.define(DATA_COLOR_VARIANT, VARIANT_YELLOW);
+        this.entityData.define(DATA_ITEM_RENDERER, ItemStack.EMPTY);
     }
 
     public int getColorVariant() {
@@ -67,20 +70,23 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         this.entityData.set(DATA_COLOR_VARIANT, variant);
     }
 
-    private String getRunaTypeKey() {
-        return "runa_" + getVariantName();
+    public ItemStack getItemRenderer() {
+        return this.entityData.get(DATA_ITEM_RENDERER);
+    }
+
+    public void setItemRenderer(ItemStack itemStack) {
+        this.entityData.set(DATA_ITEM_RENDERER, itemStack);
     }
 
     private void loadTrades() {
         if (!this.level().isClientSide) {
             RunaTradesConfig.ensureConfigExists();
 
-            String runaTypeKey = getRunaTypeKey();
-            MerchantOffers configOffers = RunaTradesConfig.getTradesForRunaType(runaTypeKey);
+            UUID runaId = this.getUUID();
+            RunaTradesConfig.RunaConfig config = RunaTradesConfig.getConfigForRuna(runaId);
 
             this.offers.clear();
-
-            for (MerchantOffer offer : configOffers) {
+            for (MerchantOffer offer : config.getOffers()) {
                 MerchantOffer newOffer = new MerchantOffer(
                         offer.getBaseCostA().copy(),
                         offer.getCostB().copy(),
@@ -93,9 +99,13 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
                 this.offers.add(newOffer);
             }
 
+            if (!config.getItemRenderer().isEmpty()) {
+                this.setItemRenderer(config.getItemRenderer().copy());
+            }
+
             if (this.offers.isEmpty()) {
                 setupDefaultTrades();
-                RunaTradesConfig.setTradesForRunaType(runaTypeKey, this.offers);
+                RunaTradesConfig.setTradesForRuna(runaId, this.offers);
             }
 
             tradesLoaded = true;
@@ -258,6 +268,12 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
             setColorVariant(compound.getInt("ColorVariant"));
         }
 
+        if (compound.contains("ItemRenderer")) {
+            CompoundTag itemTag = compound.getCompound("ItemRenderer");
+            ItemStack itemStack = ItemStack.of(itemTag);
+            this.setItemRenderer(itemStack);
+        }
+
         if (compound.contains("Offers")) {
             this.offers = new MerchantOffers(compound.getCompound("Offers"));
             tradesLoaded = true;
@@ -269,6 +285,13 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
     @Override
     protected void addAdditionalSaveData(CompoundTag compound) {
         compound.putInt("ColorVariant", getColorVariant());
+
+        if (!getItemRenderer().isEmpty()) {
+            CompoundTag itemTag = new CompoundTag();
+            getItemRenderer().save(itemTag);
+            compound.put("ItemRenderer", itemTag);
+        }
+
         compound.put("Offers", this.offers.createTag());
     }
 
@@ -319,7 +342,7 @@ public class RunaEntity extends Entity implements GeoEntity, Merchant {
         else if (type == EntityInit.RUNA_ROJA.get()) setColorVariant(VARIANT_RED);
         else if (type == EntityInit.RUNA_VERDE.get()) setColorVariant(VARIANT_GREEN);
 
-        RunaTradesConfig.registerRunaType(getRunaTypeKey());
+        RunaTradesConfig.registerRuna(this.getUUID());
 
         if (!this.level().isClientSide) {
             tradesLoaded = false;

@@ -6,7 +6,6 @@ import software.bernie.geckolib.model.GeoModel;
 
 public class RunaModel extends GeoModel<RunaEntity> {
     private static final ResourceLocation MODEL = ResourceLocation.parse("more_owleaf:geo/entity/runa.geo.json");
-    private static final ResourceLocation ANIMATIONS = ResourceLocation.parse("more_owleaf:animations/runa.animation.json");
 
     private static final ResourceLocation TEXTURE_YELLOW = ResourceLocation.parse("more_owleaf:textures/entity/runa_amarilla.png");
     private static final ResourceLocation TEXTURE_LIGHT_BLUE = ResourceLocation.parse("more_owleaf:textures/entity/runa_azul_claro.png");
@@ -35,6 +34,6 @@ public class RunaModel extends GeoModel<RunaEntity> {
 
     @Override
     public ResourceLocation getAnimationResource(RunaEntity animatable) {
-        return ANIMATIONS;
+        return null;
     }
 }

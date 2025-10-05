@@ -14,7 +14,15 @@ public class NetworkHandler {
             PROTOCOL_VERSION::equals
     );
 
+    private static int packetId = 0;
+
     public static void register() {
-        INSTANCE.registerMessage(0, DeathDataPacket.class, DeathDataPacket::toBytes, DeathDataPacket::new, DeathDataPacket::handle);
+        INSTANCE.registerMessage(packetId++, DeathDataPacket.class,
+                DeathDataPacket::toBytes, DeathDataPacket::new, DeathDataPacket::handle);
+
+        INSTANCE.registerMessage(packetId++, CasinoConfigSyncPacket.class,
+                CasinoConfigSyncPacket::encode,
+                CasinoConfigSyncPacket::decode,
+                CasinoConfigSyncPacket::handle);
     }
 }

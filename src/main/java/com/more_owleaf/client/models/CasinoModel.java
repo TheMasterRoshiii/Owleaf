@@ -7,7 +7,7 @@ import software.bernie.geckolib.model.GeoModel;
 public class CasinoModel extends GeoModel<CasinoEntity> {
     private static final ResourceLocation MODEL = ResourceLocation.parse("more_owleaf:geo/entity/casino.geo.json");
     private static final ResourceLocation TEXTURE = ResourceLocation.parse("more_owleaf:textures/entity/casino.png");
-    private static final ResourceLocation ANIMATIONS = ResourceLocation.parse("more_owleaf:animations/model.animation.json");
+    private static final ResourceLocation ANIMATIONS = ResourceLocation.parse("more_owleaf:animations/casino.animation.json");
 
     @Override
     public ResourceLocation getModelResource(CasinoEntity animatable) {

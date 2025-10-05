@@ -3,7 +3,6 @@ package com.more_owleaf.client.gui;
 import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.client.SkinHelper;
 import com.more_owleaf.network.DeathDataPacket;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
@@ -38,7 +37,7 @@ public class ReviveMenuScreen extends Screen {
     private final int rightButtonWidth = 24;
     private final int rightButtonHeight = 21;
 
-    private static final int HEAD_SIZE = 32;
+    private static final int HEAD_SIZE = 56;
 
     private List<DeathDataPacket.DeathPlayerData> deadPlayers;
     private int currentPlayerIndex = 0;
@@ -46,12 +45,6 @@ public class ReviveMenuScreen extends Screen {
     public ReviveMenuScreen(List<DeathDataPacket.DeathPlayerData> deadPlayers) {
         super(Component.translatable("gui.more_owleaf.revive_menu"));
         this.deadPlayers = deadPlayers;
-    }
-
-    public static void openWithDeathData(List<DeathDataPacket.DeathPlayerData> deadPlayers) {
-        Minecraft.getInstance().execute(() -> {
-            Minecraft.getInstance().setScreen(new ReviveMenuScreen(deadPlayers));
-        });
     }
 
     private DeathDataPacket.DeathPlayerData getCurrentPlayer() {
@@ -71,7 +64,7 @@ public class ReviveMenuScreen extends Screen {
 
             if (skin != null) {
                 graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 8, 8, 8, 8, 64, 64);
-                graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 40, 8, 8, 8, 64, 64);
+                graphics.blit(skin, x, y, HEAD_SIZE, HEAD_SIZE, 8, 8, 8, 8, 64, 64);
             } else {
                 graphics.fill(x, y, x + HEAD_SIZE, y + HEAD_SIZE, 0xFF8B7355);
             }
@@ -131,8 +124,8 @@ public class ReviveMenuScreen extends Screen {
         }
 
         int centerX = this.width / 2;
-        int headCenterY = this.topPos + (this.imageHeight / 2) - 30;
-        int nameY = headCenterY - 25;
+        int headCenterY = this.topPos + (this.imageHeight / 2);
+        int nameY = headCenterY - 50;
 
         int skinX = centerX - (HEAD_SIZE / 2);
         int skinY = headCenterY - (HEAD_SIZE / 2);
@@ -144,61 +137,12 @@ public class ReviveMenuScreen extends Screen {
         int textX = centerX - (textWidth / 2);
 
         guiGraphics.pose().pushPose();
-        float scaleFactor = 1.5F;
+        float scaleFactor = 1.75F;
         guiGraphics.pose().translate(centerX, nameY + (scaleFactor * 4), 0);
         guiGraphics.pose().scale(scaleFactor, scaleFactor, 1.0F);
         guiGraphics.pose().translate(-centerX, -(nameY + (scaleFactor * 4)), 0);
         guiGraphics.drawString(this.font, playerName, textX, nameY, 0x751B0C, false);
         guiGraphics.pose().popPose();
-
-        renderNavigationInfo(guiGraphics);
-        renderDeathInfo(guiGraphics, currentPlayer);
-    }
-
-    private void renderNavigationInfo(GuiGraphics guiGraphics) {
-        if (deadPlayers.size() > 1) {
-            int centerX = this.width / 2;
-            int infoY = this.topPos + this.imageHeight - 50;
-
-            Component navigation = Component.literal((currentPlayerIndex + 1) + "/" + deadPlayers.size());
-            int navWidth = this.font.width(navigation);
-            int navX = centerX - (navWidth / 2);
-            guiGraphics.drawString(this.font, navigation, navX, infoY, 0x888888, false);
-        }
-    }
-
-    private void renderDeathInfo(GuiGraphics guiGraphics, DeathDataPacket.DeathPlayerData player) {
-        int centerX = this.width / 2;
-        int infoStartY = this.topPos + (this.imageHeight / 2) + 20;
-
-        String deathTime = formatTime(player.deathTime);
-        Component timeComponent = Component.literal("Died: " + deathTime);
-        int timeWidth = this.font.width(timeComponent);
-        guiGraphics.drawString(this.font, timeComponent, centerX - (timeWidth / 2), infoStartY, 0xCCCCCC, false);
-
-        String dimension = getDimensionName(player.dimension);
-        Component dimComponent = Component.literal("In: " + dimension);
-        int dimWidth = this.font.width(dimComponent);
-        guiGraphics.drawString(this.font, dimComponent, centerX - (dimWidth / 2), infoStartY + 12, 0xCCCCCC, false);
-    }
-
-    private String formatTime(String timeString) {
-        try {
-            return timeString.substring(0, Math.min(timeString.length(), 16)).replace("T", " ");
-        } catch (Exception e) {
-            return timeString;
-        }
-    }
-
-    private String getDimensionName(String dimension) {
-        if (dimension.contains("nether")) {
-            return "Nether";
-        } else if (dimension.contains("end")) {
-            return "End";
-        } else if (dimension.contains("overworld")) {
-            return "Overworld";
-        }
-        return "Unknown";
     }
 
     @Override

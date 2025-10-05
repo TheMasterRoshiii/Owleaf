@@ -64,14 +64,8 @@ public class RunaReloadCommand {
                 }
             }
 
-            final int finalRunasUpdated = runasUpdated;
-            final int finalLoadedRunaCount = RunaTradesConfig.getLoadedRunaCount();
-
             context.getSource().sendSuccess(() ->
-                            Component.literal("§aConfiguración de trades de runas recargada correctamente")
-                                    .append("\n§7Runas configuradas en archivo: " + finalLoadedRunaCount)
-                                    .append("\n§7Runas encontradas en el mundo: " + finalRunasUpdated)
-                                    .append("\n§7Trades sincronizados con jugadores activos"),
+                            Component.literal("§aConfiguración de trades de runas recargada correctamente"),
                     true
             );
 

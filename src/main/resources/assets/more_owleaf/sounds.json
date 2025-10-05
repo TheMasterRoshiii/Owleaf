@@ -14,5 +14,21 @@
         "preload": false
       }
     ]
+  },
+  "revivir_song": {
+    "category": "record",
+    "replace": false,
+    "subtitle": "more_owleaf.subtitle.revivir_song",
+    "sounds": [
+      {
+        "name": "more_owleaf:revivir_song",
+        "volume": 1.0,
+        "pitch": 1.0,
+        "weight": 1,
+        "stream": true,
+        "attenuation_distance": 16,
+        "preload": false
+      }
+    ]
   }
 }

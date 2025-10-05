@@ -13,16 +13,35 @@ import java.nio.file.Path;
 import java.util.*;
 
 public class RunaTradesConfig {
+    // Clase interna para almacenar la configuración completa de una Runa
+    public static class RunaConfig {
+        private final MerchantOffers offers;
+        private final ItemStack itemRenderer;
+
+        public RunaConfig(MerchantOffers offers, ItemStack itemRenderer) {
+            this.offers = offers;
+            this.itemRenderer = itemRenderer != null ? itemRenderer : ItemStack.EMPTY;
+        }
+
+        public MerchantOffers getOffers() {
+            return offers;
+        }
+
+        public ItemStack getItemRenderer() {
+            return itemRenderer;
+        }
+    }
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = Path.of("config/more_owleaf/runa_trades.json");
-    private static final Map<String, MerchantOffers> RUNA_TYPE_TRADES = new HashMap<>();
-    private static final Set<String> REGISTERED_RUNA_TYPES = new HashSet<>();
+    private static final Map<UUID, RunaConfig> RUNA_CONFIGS = new HashMap<>();
+    private static final Set<UUID> REGISTERED_RUNAS = new HashSet<>();
     private static boolean configLoaded = false;
 
-    public static void registerRunaType(String runaType) {
-        REGISTERED_RUNA_TYPES.add(runaType);
-        if (!RUNA_TYPE_TRADES.containsKey(runaType)) {
-            RUNA_TYPE_TRADES.put(runaType, createDefaultTradesForType(runaType));
+    public static void registerRuna(UUID runaId) {
+        REGISTERED_RUNAS.add(runaId);
+        if (!RUNA_CONFIGS.containsKey(runaId)) {
+            RUNA_CONFIGS.put(runaId, createDefaultRunaConfig()); // Cambiado el nombre
             if (configLoaded) {
                 saveConfig();
             }
@@ -34,20 +53,20 @@ public class RunaTradesConfig {
             loadConfig();
         }
 
-        if (RUNA_TYPE_TRADES.isEmpty()) {
-            createDefaultConfig();
+        if (RUNA_CONFIGS.isEmpty()) {
+            createDefaultConfigFile(); // Cambiado el nombre
         }
     }
 
     public static boolean loadConfig() {
         try {
-            RUNA_TYPE_TRADES.clear();
+            RUNA_CONFIGS.clear();
 
             if (Files.exists(CONFIG_PATH)) {
                 String jsonContent = Files.readString(CONFIG_PATH);
 
                 if (jsonContent.trim().equals("{}") || jsonContent.trim().isEmpty()) {
-                    createDefaultConfig();
+                    createDefaultConfigFile(); // Cambiado el nombre
                     configLoaded = true;
                     return true;
                 }
@@ -55,45 +74,64 @@ public class RunaTradesConfig {
                 try {
                     JsonObject json = GSON.fromJson(jsonContent, JsonObject.class);
                     if (json == null) {
-                        createDefaultConfig();
+                        createDefaultConfigFile(); // Cambiado el nombre
                         configLoaded = true;
                         return true;
                     }
 
                     for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
-                        String runaType = entry.getKey();
+                        String runaIdStr = entry.getKey();
 
-                        if (!entry.getValue().isJsonArray()) {
+                        try {
+                            UUID runaId = UUID.fromString(runaIdStr);
+
+                            if (!entry.getValue().isJsonObject()) {
+                                continue;
+                            }
+
+                            JsonObject runaConfigObj = entry.getValue().getAsJsonObject();
+                            RunaConfig config = parseRunaConfig(runaConfigObj);
+
+                            RUNA_CONFIGS.put(runaId, config);
+                        } catch (IllegalArgumentException e) {
                             continue;
-                        }
-
-                        JsonArray tradesArray = entry.getValue().getAsJsonArray();
-                        MerchantOffers offers = parseOffersArray(tradesArray);
-
-                        if (!offers.isEmpty()) {
-                            RUNA_TYPE_TRADES.put(runaType, offers);
                         }
                     }
 
-                    ensureAllRunaTypesHaveConfig();
+                    ensureAllRunasHaveConfig();
 
                 } catch (JsonSyntaxException e) {
-                    createDefaultConfig();
+                    createDefaultConfigFile(); // Cambiado el nombre
                     configLoaded = true;
                     return true;
                 }
             } else {
-                createDefaultConfig();
+                createDefaultConfigFile(); // Cambiado el nombre
             }
 
             configLoaded = true;
             return true;
 
         } catch (Exception e) {
-            createDefaultConfig();
+            createDefaultConfigFile(); // Cambiado el nombre
             configLoaded = true;
             return false;
         }
+    }
+
+    private static RunaConfig parseRunaConfig(JsonObject json) {
+        MerchantOffers offers = createDefaultTrades();
+        ItemStack itemRenderer = ItemStack.EMPTY;
+
+        if (json.has("trades") && json.get("trades").isJsonArray()) {
+            offers = parseOffersArray(json.getAsJsonArray("trades"));
+        }
+
+        if (json.has("itemRenderer") && json.get("itemRenderer").isJsonObject()) {
+            itemRenderer = parseItemStack(json.getAsJsonObject("itemRenderer"));
+        }
+
+        return new RunaConfig(offers, itemRenderer);
     }
 
     private static MerchantOffers parseOffersArray(JsonArray tradesArray) {
@@ -246,12 +284,12 @@ public class RunaTradesConfig {
         return defaultValue;
     }
 
-    private static void ensureAllRunaTypesHaveConfig() {
+    private static void ensureAllRunasHaveConfig() {
         boolean needsSave = false;
 
-        for (String runaType : REGISTERED_RUNA_TYPES) {
-            if (!RUNA_TYPE_TRADES.containsKey(runaType)) {
-                RUNA_TYPE_TRADES.put(runaType, createDefaultTradesForType(runaType));
+        for (UUID runaId : REGISTERED_RUNAS) {
+            if (!RUNA_CONFIGS.containsKey(runaId)) {
+                RUNA_CONFIGS.put(runaId, createDefaultRunaConfig()); // Cambiado el nombre
                 needsSave = true;
             }
         }
@@ -261,26 +299,21 @@ public class RunaTradesConfig {
         }
     }
 
-    private static void createDefaultConfig() {
+    // Cambiado el nombre para evitar conflicto
+    private static void createDefaultConfigFile() {
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
 
-            Set<String> allRunaTypes = new HashSet<>(REGISTERED_RUNA_TYPES);
-            if (allRunaTypes.isEmpty()) {
-                allRunaTypes.addAll(Arrays.asList(
-                        "runa_amarilla", "runa_azul_claro", "runa_magenta",
-                        "runa_morada", "runa_roja", "runa_verde"
-                ));
-            }
+            Set<UUID> allRunas = new HashSet<>(REGISTERED_RUNAS);
 
             JsonObject defaultConfig = new JsonObject();
 
-            for (String runaType : allRunaTypes) {
-                JsonArray tradesArray = createDefaultTradesJson(runaType);
-                defaultConfig.add(runaType, tradesArray);
+            for (UUID runaId : allRunas) {
+                JsonObject runaConfig = createDefaultRunaConfigJson();
+                defaultConfig.add(runaId.toString(), runaConfig);
 
-                MerchantOffers offers = parseOffersArray(tradesArray);
-                RUNA_TYPE_TRADES.put(runaType, offers);
+                RunaConfig config = parseRunaConfig(runaConfig);
+                RUNA_CONFIGS.put(runaId, config);
             }
 
             Files.writeString(CONFIG_PATH, GSON.toJson(defaultConfig));
@@ -289,7 +322,10 @@ public class RunaTradesConfig {
         }
     }
 
-    private static JsonArray createDefaultTradesJson(String runaType) {
+    private static JsonObject createDefaultRunaConfigJson() {
+        JsonObject runaConfig = new JsonObject();
+
+        // Trades
         JsonArray tradesArray = new JsonArray();
 
         JsonObject trade1 = new JsonObject();
@@ -324,10 +360,23 @@ public class RunaTradesConfig {
         trade2.addProperty("priceMultiplier", 0.0);
         tradesArray.add(trade2);
 
-        return tradesArray;
+        runaConfig.add("trades", tradesArray);
+
+        // Item Renderer (por defecto vacío)
+        JsonObject itemRenderer = new JsonObject();
+        itemRenderer.addProperty("item", "minecraft:air");
+        itemRenderer.addProperty("count", 1);
+        runaConfig.add("itemRenderer", itemRenderer);
+
+        return runaConfig;
     }
 
-    private static MerchantOffers createDefaultTradesForType(String runaType) {
+    // Cambiado el nombre para evitar conflicto
+    private static RunaConfig createDefaultRunaConfig() {
+        return new RunaConfig(createDefaultTrades(), ItemStack.EMPTY);
+    }
+
+    private static MerchantOffers createDefaultTrades() {
         MerchantOffers offers = new MerchantOffers();
 
         offers.add(new MerchantOffer(
@@ -347,23 +396,36 @@ public class RunaTradesConfig {
         return offers;
     }
 
-    public static MerchantOffers getTradesForRunaType(String runaType) {
+    public static RunaConfig getConfigForRuna(UUID runaId) {
         if (!configLoaded) {
             loadConfig();
         }
 
-        MerchantOffers offers = RUNA_TYPE_TRADES.get(runaType);
-        if (offers == null || offers.isEmpty()) {
-            offers = createDefaultTradesForType(runaType);
-            RUNA_TYPE_TRADES.put(runaType, offers);
+        RunaConfig config = RUNA_CONFIGS.get(runaId);
+        if (config == null) {
+            config = createDefaultRunaConfig(); // Cambiado el nombre
+            RUNA_CONFIGS.put(runaId, config);
             saveConfig();
         }
 
-        return new MerchantOffers(offers.createTag());
+        return config;
     }
 
-    public static void setTradesForRunaType(String runaType, MerchantOffers offers) {
-        RUNA_TYPE_TRADES.put(runaType, offers);
+    public static MerchantOffers getTradesForRuna(UUID runaId) {
+        return getConfigForRuna(runaId).getOffers();
+    }
+
+    public static void setTradesForRuna(UUID runaId, MerchantOffers offers) {
+        RunaConfig currentConfig = getConfigForRuna(runaId);
+        RunaConfig newConfig = new RunaConfig(offers, currentConfig.getItemRenderer());
+        RUNA_CONFIGS.put(runaId, newConfig);
+        saveConfig();
+    }
+
+    public static void setItemRendererForRuna(UUID runaId, ItemStack itemRenderer) {
+        RunaConfig currentConfig = getConfigForRuna(runaId);
+        RunaConfig newConfig = new RunaConfig(currentConfig.getOffers(), itemRenderer);
+        RUNA_CONFIGS.put(runaId, newConfig);
         saveConfig();
     }
 
@@ -372,14 +434,26 @@ public class RunaTradesConfig {
             Files.createDirectories(CONFIG_PATH.getParent());
             JsonObject json = new JsonObject();
 
-            for (Map.Entry<String, MerchantOffers> entry : RUNA_TYPE_TRADES.entrySet()) {
-                json.add(entry.getKey(), serializeOffers(entry.getValue()));
+            for (Map.Entry<UUID, RunaConfig> entry : RUNA_CONFIGS.entrySet()) {
+                json.add(entry.getKey().toString(), serializeRunaConfig(entry.getValue()));
             }
 
             Files.writeString(CONFIG_PATH, GSON.toJson(json));
 
         } catch (Exception e) {
         }
+    }
+
+    private static JsonObject serializeRunaConfig(RunaConfig config) {
+        JsonObject json = new JsonObject();
+
+        // Serializar trades
+        json.add("trades", serializeOffers(config.getOffers()));
+
+        // Serializar item renderer
+        json.add("itemRenderer", serializeItemStack(config.getItemRenderer()));
+
+        return json;
     }
 
     private static JsonArray serializeOffers(MerchantOffers offers) {
@@ -445,19 +519,12 @@ public class RunaTradesConfig {
     }
 
     public static int getLoadedRunaCount() {
-        return RUNA_TYPE_TRADES.size();
-    }
-
-    public static MerchantOffers getTradesForRuna(UUID runaId) {
-        return new MerchantOffers();
-    }
-
-    public static void setTradesForRuna(UUID runaId, MerchantOffers offers) {
+        return RUNA_CONFIGS.size();
     }
 
     public static void forceReload() {
         configLoaded = false;
-        RUNA_TYPE_TRADES.clear();
+        RUNA_CONFIGS.clear();
         loadConfig();
     }
 }

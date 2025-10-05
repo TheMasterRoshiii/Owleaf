@@ -4,15 +4,18 @@ import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.config.DeathRegistry;
 import com.more_owleaf.network.DeathDataPacket;
 import com.more_owleaf.network.NetworkHandler;
+import com.more_owleaf.utils.SoulUtil;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.PathfinderMob;
-import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
@@ -21,33 +24,83 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FogataEntity extends PathfinderMob implements GeoEntity {
+public class FogataEntity extends Entity implements GeoEntity {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
-    public FogataEntity(EntityType<? extends PathfinderMob> type, Level world) {
+    public FogataEntity(EntityType<?> type, Level world) {
         super(type, world);
+        this.noCulling = true;
     }
 
-    public static AttributeSupplier.Builder createAttributes() {
-        return PathfinderMob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 10.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.0D)
-                .add(Attributes.KNOCKBACK_RESISTANCE, 1.0D);
+    @Override
+    protected void defineSynchedData() {
+    }
+
+    @Override
+    protected void readAdditionalSaveData(CompoundTag compound) {
+    }
+
+    @Override
+    protected void addAdditionalSaveData(CompoundTag compound) {
+    }
+
+    @Override
+    public AABB getBoundingBoxForCulling() {
+        return this.getBoundingBox();
+    }
+
+    @Override
+    public boolean isPickable() {
+        return true;
+    }
+
+    @Override
+    public boolean canCollideWith(Entity entity) {
+        return true;
+    }
+
+    @Override
+    public boolean canBeCollidedWith() {
+        return true;
     }
 
     @Override
     public boolean isPushable() {
-        return false;
+        return true;
     }
 
     @Override
-    public InteractionResult interactAt(Player player, net.minecraft.world.phys.Vec3 vec, InteractionHand hand) {
-        return this.mobInteract(player, hand);
+    public InteractionResult interact(Player player, InteractionHand hand) {
+        return this.interactAt(player, Vec3.ZERO, hand);
     }
 
     @Override
-    protected InteractionResult mobInteract(Player player, InteractionHand hand) {
-        if (player instanceof ServerPlayer serverPlayer) {
+    public InteractionResult interactAt(Player player, Vec3 vec, InteractionHand hand) {
+        if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
+            ItemStack heldItem = player.getItemInHand(hand);
+
+            boolean hasCuchara = false;
+            boolean hasTenedor = false;
+
+            if (More_Owleaf.FOGATA_CONFIG != null && More_Owleaf.FOGATA_CONFIG.getItemCuchara() != null) {
+                hasCuchara = heldItem.getItem() == More_Owleaf.FOGATA_CONFIG.getItemCuchara();
+            }
+
+            if (More_Owleaf.FOGATA_CONFIG != null && More_Owleaf.FOGATA_CONFIG.getItemTenedor() != null) {
+                hasTenedor = heldItem.getItem() == More_Owleaf.FOGATA_CONFIG.getItemTenedor();
+            }
+
+            if (!hasCuchara && !hasTenedor) {
+                return InteractionResult.FAIL;
+            }
+
+            if (hasCuchara) {
+                boolean hasAlmas = checkPlayerAlmas(player);
+                if (!hasAlmas) {
+                    return InteractionResult.FAIL;
+                }
+            }
+
             if (More_Owleaf.DEATH_REGISTRY != null && !More_Owleaf.DEATH_REGISTRY.getDeathRecords().isEmpty()) {
                 List<DeathDataPacket.DeathPlayerData> deadPlayers = new ArrayList<>();
                 for (DeathRegistry.DeathRecord record : More_Owleaf.DEATH_REGISTRY.getDeathRecords()) {
@@ -68,9 +121,21 @@ public class FogataEntity extends PathfinderMob implements GeoEntity {
                         net.minecraftforge.network.NetworkDirection.PLAY_TO_CLIENT
                 );
                 return InteractionResult.SUCCESS;
+            } else {
             }
         }
         return InteractionResult.PASS;
+    }
+
+    private boolean checkPlayerAlmas(Player player) {
+        return player.getCapability(SoulUtil.SOUL_CAPABILITY)
+                .map(soul -> soul.getSouls() >= More_Owleaf.FOGATA_CONFIG.COMMON.almasRequeridas.get())
+                .orElse(false);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
     }
 
     @Override
