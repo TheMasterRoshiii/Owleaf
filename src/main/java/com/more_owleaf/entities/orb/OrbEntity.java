@@ -49,54 +49,62 @@ public class OrbEntity extends Entity implements GeoEntity {
 
         if (!level().isClientSide) {
             serverTick();
+            handleWallCollisions();
         }
     }
 
-    private void serverTick() {
-        switch (config.getMode()) {
-            case BARRIER:
-                handleBarrierMode();
-                break;
-            case SPAWNER:
-                handleSpawnerMode();
-                break;
-            case IDLE:
-                break;
-        }
-    }
-
-    private void handleBarrierMode() {
-        if (!config.isActive()) return;
+    private void handleWallCollisions() {
+        if (config.getMode() != OrbConfig.OrbMode.BARRIER || !config.isActive()) return;
 
         double size = config.getBarrierSize();
         double height = config.getBarrierHeight();
+        Vec3 orbPos = this.position();
 
-        AABB barrierArea = new AABB(
-                position().add(-size, 0, -size),
-                position().add(size, height, size)
+        AABB checkArea = new AABB(
+                orbPos.add(-size - 1, -2, -1.5),
+                orbPos.add(size + 1, height + 2, 1.5)
         );
 
-        List<Entity> entities = level().getEntitiesOfClass(Entity.class, barrierArea);
+        List<Entity> entities = level().getEntitiesOfClass(Entity.class, checkArea);
         for (Entity entity : entities) {
             if (entity instanceof LivingEntity &&
                     entity.getId() != this.getId() &&
                     !(entity instanceof OrbEntity)) {
 
                 Vec3 entityPos = entity.position();
-                Vec3 orbPos = this.position();
-
-                double dx = entityPos.x - orbPos.x;
+                double dx = Math.abs(entityPos.x - orbPos.x);
+                double dy = entityPos.y - orbPos.y;
                 double dz = entityPos.z - orbPos.z;
-                double distance = Math.sqrt(dx * dx + dz * dz);
 
-                if (distance < size && distance > 0) {
-                    double pushX = (dx / distance) * 1.2;
-                    double pushZ = (dz / distance) * 1.2;
 
-                    entity.setDeltaMovement(pushX, entity.getDeltaMovement().y + 0.2, pushZ);
-                    entity.hurtMarked = true;
+                if (dx <= size && dy >= -1 && dy <= height) {
+
+                    if (Math.abs(dz) <= 1.0) {
+
+                        double safeZ = dz > 0 ? orbPos.z + 1.2 : orbPos.z - 1.2;
+                        entity.teleportTo(entityPos.x, entityPos.y, safeZ);
+
+
+                        Vec3 velocity = entity.getDeltaMovement();
+                        if ((dz > 0 && velocity.z < 0) || (dz < 0 && velocity.z > 0)) {
+                            entity.setDeltaMovement(velocity.x, velocity.y, 0);
+                        }
+
+                        entity.hurtMarked = true;
+                    }
                 }
             }
+        }
+    }
+
+    private void serverTick() {
+        switch (config.getMode()) {
+            case SPAWNER:
+                handleSpawnerMode();
+                break;
+            case BARRIER:
+            case IDLE:
+                break;
         }
     }
 
@@ -245,27 +253,21 @@ public class OrbEntity extends Entity implements GeoEntity {
     }
 
     private PlayState animationPredicate(AnimationState<OrbEntity> state) {
+        String animationName = getAnimationForCurrentState();
+        state.getController().setAnimation(RawAnimation.begin().thenLoop(animationName));
+        return PlayState.CONTINUE;
+    }
+
+    private String getAnimationForCurrentState() {
         switch (config.getMode()) {
             case BARRIER:
-                if (config.isActive()) {
-                    state.getController().setAnimation(RawAnimation.begin().thenLoop("barrier_open"));
-                } else {
-                    state.getController().setAnimation(RawAnimation.begin().thenLoop("idle"));
-                }
-                break;
+                return config.isActive() ? "barrier_open" : "idle";
             case SPAWNER:
-                if (config.isActive()) {
-                    state.getController().setAnimation(RawAnimation.begin().thenLoop("spawner_open"));
-                } else {
-                    state.getController().setAnimation(RawAnimation.begin().thenLoop("idle"));
-                }
-                break;
+                return config.isActive() ? "spawner_open" : "spawner_close";
             case IDLE:
             default:
-                state.getController().setAnimation(RawAnimation.begin().thenLoop("idle"));
-                break;
+                return "idle";
         }
-        return PlayState.CONTINUE;
     }
 
     @Override
