@@ -4,6 +4,7 @@ import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.entities.CasinoEntity;
 import com.more_owleaf.entities.FogataEntity;
 import com.more_owleaf.entities.RunaEntity;
+import com.more_owleaf.entities.orb.OrbEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.DeferredRegister;
@@ -68,4 +69,11 @@ public class EntityInit {
                     .sized(1.0f, 2.0f)
                     .clientTrackingRange(10)
                     .build("runa_verde"));
+
+    public static final RegistryObject<EntityType<OrbEntity>> ORB_ENTITY = ENTITIES.register("orb",
+            () -> EntityType.Builder.<OrbEntity>of(OrbEntity::new, MobCategory.MISC)
+                    .sized(2.0f, 2.0f)
+                    .clientTrackingRange(10)
+                    .updateInterval(3)
+                    .build("orb"));
 }

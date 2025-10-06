@@ -1,9 +1,6 @@
 package com.more_owleaf;
 
-import com.more_owleaf.commands.CasinoReloadCommand;
-import com.more_owleaf.commands.CasinoToggleCommand;
-import com.more_owleaf.commands.FogataCommands;
-import com.more_owleaf.commands.RunaReloadCommand;
+import com.more_owleaf.commands.*;
 import com.more_owleaf.config.CasinoConfig;
 import com.more_owleaf.config.DeathRegistry;
 import com.more_owleaf.config.FogataConfig;
@@ -76,6 +73,7 @@ public class More_Owleaf {
         CasinoToggleCommand.register(event.getDispatcher());
         RunaReloadCommand.register(event.getDispatcher());
         FogataCommands.register(event.getDispatcher());
+        OrbCommands.register(event.getDispatcher());
     }
 
     @SubscribeEvent
