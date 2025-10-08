@@ -1,6 +1,5 @@
 package com.more_owleaf.network.orb;
 
-
 import com.more_owleaf.config.OrbConfig;
 import com.more_owleaf.entities.OrbEntity;
 import com.more_owleaf.utils.orb.OrbConfigManager;
@@ -36,7 +35,7 @@ public class UpdateOrbConfigPacket {
     public static void handle(UpdateOrbConfigPacket msg, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
-            if (player != null) {
+            if (player != null && player.hasPermissions(2)) {
                 Entity entity = player.level().getEntity(msg.orbId);
                 if (entity instanceof OrbEntity orb) {
                     OrbConfig newConfig = OrbConfigManager.jsonToConfig(msg.configJson);

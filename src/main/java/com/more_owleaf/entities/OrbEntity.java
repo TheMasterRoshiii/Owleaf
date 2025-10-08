@@ -36,19 +36,17 @@ import java.util.UUID;
 
 public class OrbEntity extends Entity implements GeoEntity {
     private static final EntityDataAccessor<String> CONFIG_DATA = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.STRING);
-    private static final EntityDataAccessor<Boolean> DATA_TRIGGER_SPAWN_ANIM =
-            SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.BOOLEAN);
-    private static final EntityDataAccessor<Boolean> DATA_IS_SPAWNING =
-            SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Integer> FORCE_SYNC =
+            SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.INT);
 
     private OrbConfig config = new OrbConfig();
     private boolean configInitialized = false;
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+    private int syncCounter = 0;
 
     private int spawnTimer = 0;
     private int mobSpawnDelayTimer = -1;
-    private int spawnAnimationTimer = 0;
-    private boolean shouldReturnToClose = false;
+    private boolean isCurrentlySpawning = false;
 
     private int instantSpawnDelayCounter = -1;
     private int instantSpawnMobsRemaining = 0;
@@ -72,8 +70,7 @@ public class OrbEntity extends Entity implements GeoEntity {
     @Override
     protected void defineSynchedData() {
         this.entityData.define(CONFIG_DATA, "{}");
-        this.entityData.define(DATA_TRIGGER_SPAWN_ANIM, false);
-        this.entityData.define(DATA_IS_SPAWNING, false);
+        this.entityData.define(FORCE_SYNC, 0);
     }
 
     @Override
@@ -91,23 +88,54 @@ public class OrbEntity extends Entity implements GeoEntity {
     public void tick() {
         super.tick();
         if (!level().isClientSide) {
-            if (this.entityData.get(DATA_TRIGGER_SPAWN_ANIM)) {
-                this.entityData.set(DATA_TRIGGER_SPAWN_ANIM, false);
-            }
-
             if (!configInitialized) {
                 this.config = OrbConfigManager.loadOrbConfig(this.getUUID());
                 OrbConfigManager.saveOrbConfig(this.getUUID(), this.config);
                 this.configInitialized = true;
-                syncConfigToClient();
+                forceSync();
             }
 
-            if (config.getMode() == OrbConfig.OrbMode.SPAWNER && config.isActive()) {
-                handleSpawnerMode();
-            }
-
+            handleSpawnerLogic();
             handleInstantSpawnProcess();
         }
+    }
+
+    private void handleSpawnerLogic() {
+        boolean shouldBeSpawning = (config.getMode() == OrbConfig.OrbMode.SPAWNER && config.isActive());
+
+        if (!shouldBeSpawning) {
+            if (isCurrentlySpawning) {
+                stopSpawning();
+            }
+            return;
+        }
+
+        if (this.mobSpawnDelayTimer > 0) {
+            this.mobSpawnDelayTimer--;
+            if (this.mobSpawnDelayTimer == 0) {
+                trySpawnMobs();
+            }
+            return;
+        }
+
+        if (this.spawnTimer > 0) {
+            this.spawnTimer--;
+            return;
+        }
+
+        startSpawnCycle();
+    }
+
+    private void startSpawnCycle() {
+        this.spawnTimer = config.getSpawnRate();
+        this.mobSpawnDelayTimer = 20;
+        this.isCurrentlySpawning = true;
+    }
+
+    private void stopSpawning() {
+        this.isCurrentlySpawning = false;
+        this.spawnTimer = 0;
+        this.mobSpawnDelayTimer = -1;
     }
 
     @Override
@@ -121,6 +149,18 @@ public class OrbEntity extends Entity implements GeoEntity {
 
     public void setConfig(OrbConfig newConfig) {
         boolean wasBarrierActive = (this.config.getMode() == OrbConfig.OrbMode.BARRIER && this.config.isActive());
+
+        boolean spawnerConfigChanged = false;
+        if (this.config.getMode() == OrbConfig.OrbMode.SPAWNER && newConfig.getMode() == OrbConfig.OrbMode.SPAWNER) {
+            spawnerConfigChanged =
+                    !this.config.getMobType().equals(newConfig.getMobType()) ||
+                            this.config.getSpawnRate() != newConfig.getSpawnRate() ||
+                            this.config.getSpawnCount() != newConfig.getSpawnCount() ||
+                            this.config.getMaxMobs() != newConfig.getMaxMobs() ||
+                            this.config.getSpawnRadius() != newConfig.getSpawnRadius() ||
+                            this.config.getChargeCreepers() != newConfig.getChargeCreepers();
+        }
+
         this.config = newConfig;
 
         if (!level().isClientSide) {
@@ -132,8 +172,26 @@ public class OrbEntity extends Entity implements GeoEntity {
             } else if (!wasBarrierActive && isBarrierActiveNow) {
                 spawnBarrier();
             }
+
+            if (this.config.getMode() != OrbConfig.OrbMode.SPAWNER || !this.config.isActive()) {
+                stopSpawning();
+            }
+
+            if (spawnerConfigChanged && this.config.getMode() == OrbConfig.OrbMode.SPAWNER && this.config.isActive()) {
+                stopSpawning();
+                startSpawnCycle();
+            }
         }
-        syncConfigToClient();
+
+        forceSync();
+    }
+
+    private void forceSync() {
+        if (!level().isClientSide) {
+            this.syncCounter++;
+            this.entityData.set(CONFIG_DATA, OrbConfigManager.configToJson(config));
+            this.entityData.set(FORCE_SYNC, this.syncCounter);
+        }
     }
 
     public void startInstantSpawn() {
@@ -169,28 +227,20 @@ public class OrbEntity extends Entity implements GeoEntity {
         }
         int mobsToSpawnInThisBatch = Math.min(10, this.instantSpawnMobsRemaining);
         for (int i = 0; i < mobsToSpawnInThisBatch; i++) {
-            try {
-                Entity entity = entityTypeToSpawn.create(serverLevel);
-                if (entity instanceof Mob mob) {
-                    BlockPos spawnPos = findValidSpawnPosition(serverLevel, this.instantSpawnRadiusCache);
-                    if (spawnPos != null) {
-                        mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
-                        mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
-
-                        if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
-                            serverLevel.addFreshEntity(mob);
-                            serverLevel.getServer().execute(() -> {
-                                if (creeper.isAlive() && !creeper.isRemoved()) {
-                                    creeper.thunderHit(serverLevel, null);
-                                }
-                            });
-                        } else {
-                            serverLevel.addFreshEntity(mob);
-                        }
-                    }
+            Entity entity = entityTypeToSpawn.create(serverLevel);
+            if (entity instanceof Mob mob) {
+                if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
+                    CompoundTag nbt = new CompoundTag();
+                    creeper.addAdditionalSaveData(nbt);
+                    nbt.putBoolean("powered", true);
+                    creeper.readAdditionalSaveData(nbt);
                 }
-            } catch (Exception e) {
-                System.err.println("Error spawning mob: " + e.getMessage());
+                BlockPos spawnPos = findValidSpawnPosition(serverLevel, this.instantSpawnRadiusCache);
+                if (spawnPos != null) {
+                    mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                    mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
+                    serverLevel.addFreshEntity(mob);
+                }
             }
         }
         this.instantSpawnMobsRemaining -= mobsToSpawnInThisBatch;
@@ -244,73 +294,36 @@ public class OrbEntity extends Entity implements GeoEntity {
         }
     }
 
-    private void handleSpawnerMode() {
-        if (this.mobSpawnDelayTimer > 0) {
-            this.mobSpawnDelayTimer--;
-            if (this.mobSpawnDelayTimer == 0) {
-                if (this.level() instanceof ServerLevel serverLevel) {
-                    trySpawnMobs(serverLevel);
-                    this.spawnAnimationTimer = 40;
-                    this.entityData.set(DATA_IS_SPAWNING, false);
-                }
-            }
-            return;
-        }
+    private void trySpawnMobs() {
+        if (!(this.level() instanceof ServerLevel serverLevel)) return;
 
-        if (this.spawnAnimationTimer > 0) {
-            this.spawnAnimationTimer--;
-            if (this.spawnAnimationTimer == 0) {
-                this.shouldReturnToClose = true;
-            }
-        }
-
-        if (this.spawnTimer > 0) {
-            this.spawnTimer--;
-            return;
-        }
-
-        this.spawnTimer = config.getSpawnRate();
-        this.entityData.set(DATA_TRIGGER_SPAWN_ANIM, true);
-        this.entityData.set(DATA_IS_SPAWNING, true);
-        this.mobSpawnDelayTimer = 20;
-        this.shouldReturnToClose = false;
-    }
-
-    private boolean trySpawnMobs(ServerLevel serverLevel) {
         AABB checkArea = new AABB(this.blockPosition()).inflate(config.getSpawnRadius());
         EntityType<?> entityTypeToSpawn = EntityType.byString(config.getMobType()).orElse(null);
-        if (entityTypeToSpawn == null) return false;
+        if (entityTypeToSpawn == null) return;
+
         long existingMobs = serverLevel.getEntitiesOfClass(LivingEntity.class, checkArea, (e) -> e.getType() == entityTypeToSpawn).size();
-        if (existingMobs >= config.getMaxMobs()) return false;
-        boolean spawnedAtLeastOne = false;
+        if (existingMobs >= config.getMaxMobs()) return;
+
         for (int i = 0; i < config.getSpawnCount(); i++) {
             if (existingMobs + i >= config.getMaxMobs()) break;
-            try {
-                Entity entity = entityTypeToSpawn.create(serverLevel);
-                if (entity instanceof Mob mob) {
-                    BlockPos spawnPos = findValidSpawnPosition(serverLevel, config.getSpawnRadius());
-                    if (spawnPos != null) {
-                        mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
-                        mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
 
-                        if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
-                            serverLevel.addFreshEntity(mob);
-                            serverLevel.getServer().execute(() -> {
-                                if (creeper.isAlive() && !creeper.isRemoved()) {
-                                    creeper.thunderHit(serverLevel, null);
-                                }
-                            });
-                        } else {
-                            serverLevel.addFreshEntity(mob);
-                        }
-                        spawnedAtLeastOne = true;
-                    }
+            Entity entity = entityTypeToSpawn.create(serverLevel);
+            if (entity instanceof Mob mob) {
+                if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
+                    CompoundTag nbt = new CompoundTag();
+                    creeper.addAdditionalSaveData(nbt);
+                    nbt.putBoolean("powered", true);
+                    creeper.readAdditionalSaveData(nbt);
                 }
-            } catch (Exception e) {
-                System.err.println("Error spawning mob in spawner mode: " + e.getMessage());
+
+                BlockPos spawnPos = findValidSpawnPosition(serverLevel, config.getSpawnRadius());
+                if (spawnPos != null) {
+                    mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                    mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
+                    serverLevel.addFreshEntity(mob);
+                }
             }
         }
-        return spawnedAtLeastOne;
     }
 
     private BlockPos findValidSpawnPosition(ServerLevel level, int radius) {
@@ -327,7 +340,6 @@ public class OrbEntity extends Entity implements GeoEntity {
     }
 
     public OrbConfig getConfig() { return config; }
-    private void syncConfigToClient() { if (!level().isClientSide) { this.entityData.set(CONFIG_DATA, OrbConfigManager.configToJson(config)); } }
 
     @Override
     public void onSyncedDataUpdated(EntityDataAccessor<?> key) {
@@ -335,10 +347,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (CONFIG_DATA.equals(key) && level().isClientSide) {
             this.config = OrbConfigManager.jsonToConfig(this.entityData.get(CONFIG_DATA));
         }
-        if (DATA_TRIGGER_SPAWN_ANIM.equals(key) && level().isClientSide) {
-            if (this.entityData.get(DATA_TRIGGER_SPAWN_ANIM)) {
-                this.triggerAnim("main", "spawner_open");
-            }
+        if (FORCE_SYNC.equals(key) && level().isClientSide) {
+            this.config = OrbConfigManager.jsonToConfig(this.entityData.get(CONFIG_DATA));
         }
     }
 
@@ -349,13 +359,13 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (tag.hasUUID("BarrierUUID")) { this.barrierEntityUUID = tag.getUUID("BarrierUUID"); }
         this.spawnTimer = tag.getInt("SpawnTimer");
         this.mobSpawnDelayTimer = tag.getInt("MobSpawnDelayTimer");
-        this.spawnAnimationTimer = tag.getInt("SpawnAnimationTimer");
-        this.shouldReturnToClose = tag.getBoolean("ShouldReturnToClose");
+        this.isCurrentlySpawning = tag.getBoolean("IsCurrentlySpawning");
         this.instantSpawnDelayCounter = tag.getInt("InstantSpawnDelayCounter");
         this.instantSpawnMobsRemaining = tag.getInt("InstantSpawnMobsRemaining");
         this.instantSpawnBatchCooldown = tag.getInt("InstantSpawnBatchCooldown");
         this.instantSpawnRadiusCache = tag.getInt("InstantSpawnRadiusCache");
         this.instantSpawnMobTypeCache = tag.getString("InstantSpawnMobTypeCache");
+        this.syncCounter = tag.getInt("SyncCounter");
     }
 
     @Override
@@ -365,19 +375,18 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (barrierEntityUUID != null) { tag.putUUID("BarrierUUID", barrierEntityUUID); }
         tag.putInt("SpawnTimer", spawnTimer);
         tag.putInt("MobSpawnDelayTimer", mobSpawnDelayTimer);
-        tag.putInt("SpawnAnimationTimer", spawnAnimationTimer);
-        tag.putBoolean("ShouldReturnToClose", shouldReturnToClose);
+        tag.putBoolean("IsCurrentlySpawning", isCurrentlySpawning);
         tag.putInt("InstantSpawnDelayCounter", this.instantSpawnDelayCounter);
         tag.putInt("InstantSpawnMobsRemaining", this.instantSpawnMobsRemaining);
         tag.putInt("InstantSpawnBatchCooldown", this.instantSpawnBatchCooldown);
         tag.putInt("InstantSpawnRadiusCache", this.instantSpawnRadiusCache);
         tag.putString("InstantSpawnMobTypeCache", this.instantSpawnMobTypeCache);
+        tag.putInt("SyncCounter", this.syncCounter);
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         AnimationController<OrbEntity> controller = new AnimationController<>(this, "main", 0, this::animationPredicate);
-        controller.triggerableAnim("spawner_open", RawAnimation.begin().thenPlay("spawner_open"));
         controllers.add(controller);
     }
 
@@ -388,21 +397,14 @@ public class OrbEntity extends Entity implements GeoEntity {
 
     private String getAnimationForCurrentState() {
         switch (config.getMode()) {
-            case IDLE: return config.isActive() ? "idle" : "idle_close";
-            case BARRIER: return config.isActive() ? "barrier_open" : "barrier_close";
+            case IDLE:
+                return config.isActive() ? "idle" : "idle_close";
+            case BARRIER:
+                return config.isActive() ? "barrier_open" : "barrier_close";
             case SPAWNER:
-                if (!config.isActive()) {
-                    return "spawner_close";
-                }
-                if (this.entityData.get(DATA_IS_SPAWNING)) {
-                    return "spawner_open";
-                } else if (this.shouldReturnToClose) {
-                    this.shouldReturnToClose = false;
-                    return "spawner_close";
-                } else {
-                    return "spawner_close";
-                }
-            default: return "idle";
+                return config.isActive() ? "spawner_open" : "spawner_close";
+            default:
+                return "idle";
         }
     }
 
