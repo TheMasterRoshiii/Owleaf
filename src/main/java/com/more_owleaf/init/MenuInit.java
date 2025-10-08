@@ -17,5 +17,6 @@ public class MenuInit {
             () -> IForgeMenuType.create((windowId, inv, data) -> {
                 return new RunaMerchantMenu(windowId, inv);
             })
+
     );
 }

@@ -76,14 +76,10 @@ public class OrbEntity extends Entity implements GeoEntity {
                 double dy = entityPos.y - orbPos.y;
                 double dz = entityPos.z - orbPos.z;
 
-
                 if (dx <= size && dy >= -1 && dy <= height) {
-
                     if (Math.abs(dz) <= 1.0) {
-
                         double safeZ = dz > 0 ? orbPos.z + 1.2 : orbPos.z - 1.2;
                         entity.teleportTo(entityPos.x, entityPos.y, safeZ);
-
 
                         Vec3 velocity = entity.getDeltaMovement();
                         if ((dz > 0 && velocity.z < 0) || (dz < 0 && velocity.z > 0)) {
@@ -261,7 +257,7 @@ public class OrbEntity extends Entity implements GeoEntity {
     private String getAnimationForCurrentState() {
         switch (config.getMode()) {
             case BARRIER:
-                return config.isActive() ? "barrier_open" : "idle";
+                return config.isActive() ? "barrier_open" : "barrier_close";
             case SPAWNER:
                 return config.isActive() ? "spawner_open" : "spawner_close";
             case IDLE:

@@ -2,9 +2,9 @@ package com.more_owleaf.entities;
 
 import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.config.DeathRegistry;
-import com.more_owleaf.network.DeathDataPacket;
+import com.more_owleaf.network.fogata.DeathDataPacket;
 import com.more_owleaf.network.NetworkHandler;
-import com.more_owleaf.utils.SoulUtil;
+import com.more_owleaf.utils.fogata.SoulUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;

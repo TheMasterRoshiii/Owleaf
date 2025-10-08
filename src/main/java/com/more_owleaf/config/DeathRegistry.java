@@ -2,25 +2,30 @@ package com.more_owleaf.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.properties.Property;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.player.Player;
 
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class DeathRegistry {
+    private static final Path CONFIG_PATH = Paths.get("config", "more_owleaf_deaths.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = Path.of("config/more_owleaf/death_registry.json");
-    private static final int MAX_DEATHS = 15;
 
-    private List<DeathRecord> deathRecords = new ArrayList<>();
-    private Set<String> ignoredPlayers = new HashSet<>();
-    private Map<String, Integer> playerLives = new HashMap<>();
+    // Contenedor para todos los datos que guardaremos en el JSON
+    private DeathRegistryData data;
+
+    // Clase interna que contiene TODA la información
+    private static class DeathRegistryData {
+        List<DeathRecord> deathRecords = new ArrayList<>();
+        List<String> ignoredPlayers = new ArrayList<>(); // Lista para jugadores ignorados
+        Map<String, Integer> playerLives = new HashMap<>(); // Mapa para las vidas
+    }
 
     public static class DeathRecord {
         public String playerName;
@@ -30,146 +35,115 @@ public class DeathRegistry {
         public String skinTextureData;
         public String skinSignature;
         public boolean hasSkinData;
-        public int remainingLives;
 
-        public DeathRecord(String playerName, String playerUUID, String deathTime, String dimension,
-                           String skinTextureData, String skinSignature, boolean hasSkinData, int remainingLives) {
-            this.playerName = playerName;
-            this.playerUUID = playerUUID;
-            this.deathTime = deathTime;
-            this.dimension = dimension;
-            this.skinTextureData = skinTextureData;
-            this.skinSignature = skinSignature;
-            this.hasSkinData = hasSkinData;
-            this.remainingLives = remainingLives;
+        public DeathRecord() {}
+
+        public DeathRecord(ServerPlayer player) {
+            this.playerName = player.getGameProfile().getName();
+            this.playerUUID = player.getUUID().toString();
+            this.deathTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+            this.dimension = player.level().dimension().location().toString();
+
+            var skinProperty = player.getGameProfile().getProperties().get("textures").stream().findFirst();
+            if (skinProperty.isPresent()) {
+                this.skinTextureData = skinProperty.get().getValue();
+                this.skinSignature = skinProperty.get().getSignature();
+                this.hasSkinData = true;
+            } else {
+                this.hasSkinData = false;
+            }
         }
-    }
-
-    public static class DeathRegistryConfig {
-        public List<DeathRecord> deaths = new ArrayList<>();
-        public Set<String> ignoredPlayers = new HashSet<>();
-        public Map<String, Integer> playerLives = new HashMap<>();
     }
 
     public void loadConfig() {
         try {
             if (Files.exists(CONFIG_PATH)) {
-                String json = Files.readString(CONFIG_PATH);
-                DeathRegistryConfig config = GSON.fromJson(json, DeathRegistryConfig.class);
-                if (config != null) {
-                    this.deathRecords = config.deaths != null ? config.deaths : new ArrayList<>();
-                    this.ignoredPlayers = config.ignoredPlayers != null ? config.ignoredPlayers : new HashSet<>();
-                    this.playerLives = config.playerLives != null ? config.playerLives : new HashMap<>();
+                FileReader reader = new FileReader(CONFIG_PATH.toFile());
+                this.data = GSON.fromJson(reader, DeathRegistryData.class);
+                reader.close();
+                // Si el archivo existe pero está vacío o malformado, creamos data nueva
+                if (this.data == null) {
+                    this.data = new DeathRegistryData();
                 }
+            } else {
+                // Si el archivo no existe, creamos data nueva y la guardamos
+                this.data = new DeathRegistryData();
+                saveConfig();
             }
         } catch (IOException e) {
-            System.err.println("Failed to load death registry: " + e.getMessage());
+            e.printStackTrace();
+            this.data = new DeathRegistryData();
         }
     }
 
     public void saveConfig() {
-        try {
-            Files.createDirectories(CONFIG_PATH.getParent());
-            DeathRegistryConfig config = new DeathRegistryConfig();
-            config.deaths = this.deathRecords;
-            config.ignoredPlayers = this.ignoredPlayers;
-            config.playerLives = this.playerLives;
-            Files.writeString(CONFIG_PATH, GSON.toJson(config));
+        try (FileWriter writer = new FileWriter(CONFIG_PATH.toFile())) {
+            // Esta es la línea clave
+            GSON.toJson(this.data, writer);
         } catch (IOException e) {
-            System.err.println("Failed to save death registry: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    public void registerDeath(Player player, MinecraftServer server) {
-        if (!(player instanceof ServerPlayer serverPlayer)) return;
-
-        String playerName = player.getName().getString();
-        String playerUUID = player.getUUID().toString();
-
-        if (ignoredPlayers.contains(playerName) || ignoredPlayers.contains(playerUUID)) {
-            return;
-        }
-
-        // Reducir vidas
-        int currentLives = getPlayerLives(playerUUID);
-        currentLives--;
-
-        if (currentLives < 0) {
-            return; // Ya no tiene vidas
-        }
-
-        playerLives.put(playerUUID, currentLives);
-
-        // Solo registrar en la lista de muertos si las vidas llegaron a 0
-        if (currentLives > 0) {
+    public void registerDeath(ServerPlayer player) {
+        if (data != null) {
+            // Evita duplicados en la lista de muertes
+            data.deathRecords.removeIf(record -> record.playerUUID.equals(player.getUUID().toString()));
+            data.deathRecords.add(new DeathRecord(player));
             saveConfig();
-            return;
         }
-
-        String deathTime = java.time.LocalDateTime.now().toString();
-        String dimension = player.level().dimension().location().toString();
-
-        String skinTextureData = "";
-        String skinSignature = "";
-        boolean hasSkinData = false;
-
-        try {
-            GameProfile gameProfile = serverPlayer.getGameProfile();
-            if (gameProfile != null && gameProfile.getProperties().containsKey("textures")) {
-                Property textureProperty = gameProfile.getProperties().get("textures").iterator().next();
-                if (textureProperty != null && textureProperty.getValue() != null && !textureProperty.getValue().isEmpty()) {
-                    skinTextureData = textureProperty.getValue();
-                    skinSignature = textureProperty.getSignature() != null ? textureProperty.getSignature() : "";
-                    hasSkinData = true;
-                }
-            }
-        } catch (Exception e) {
-        }
-
-        DeathRecord record = new DeathRecord(playerName, playerUUID, deathTime, dimension,
-                skinTextureData, skinSignature, hasSkinData, currentLives);
-        deathRecords.add(0, record);
-
-        if (deathRecords.size() > MAX_DEATHS) {
-            deathRecords = deathRecords.subList(0, MAX_DEATHS);
-        }
-
-        saveConfig();
-    }
-
-    public int getPlayerLives(String playerUUID) {
-        return playerLives.getOrDefault(playerUUID, FogataConfig.COMMON.vidasIniciales.get());
-    }
-
-    public void setPlayerLives(String playerUUID, int lives) {
-        playerLives.put(playerUUID, lives);
-        saveConfig();
-    }
-
-    public void addIgnoredPlayer(String identifier) {
-        ignoredPlayers.add(identifier);
-        saveConfig();
-    }
-
-    public void removeIgnoredPlayer(String identifier) {
-        ignoredPlayers.remove(identifier);
-        saveConfig();
-    }
-
-    public void removeDeathRecord(String playerUUID) {
-        deathRecords.removeIf(record -> record.playerUUID.equals(playerUUID));
-        saveConfig();
     }
 
     public List<DeathRecord> getDeathRecords() {
-        return new ArrayList<>(deathRecords);
+        return this.data != null ? this.data.deathRecords : Collections.emptyList();
     }
 
-    public Set<String> getIgnoredPlayers() {
-        return new HashSet<>(ignoredPlayers);
+    public Optional<DeathRecord> getRecordByUUID(String uuid) {
+        if (this.data == null) return Optional.empty();
+        return data.deathRecords.stream()
+                .filter(record -> record.playerUUID.equals(uuid))
+                .findFirst();
+    }
+
+    public void removeDeathRecord(String uuid) {
+        if (this.data != null) {
+            boolean removed = data.deathRecords.removeIf(record -> record.playerUUID.equals(uuid));
+            if (removed) {
+                saveConfig(); // Guarda los cambios solo si algo fue removido
+            }
+        }
+    }
+
+    // --- Métodos para Jugadores Ignorados ---
+    public void addIgnoredPlayer(String uuid) {
+        if (this.data != null && !this.data.ignoredPlayers.contains(uuid)) {
+            this.data.ignoredPlayers.add(uuid);
+            saveConfig();
+        }
+    }
+
+    public void removeIgnoredPlayer(String uuid) {
+        if (this.data != null) {
+            boolean removed = this.data.ignoredPlayers.remove(uuid);
+            if (removed) {
+                saveConfig();
+            }
+        }
+    }
+
+    public List<String> getIgnoredPlayers() {
+        return this.data != null ? this.data.ignoredPlayers : Collections.emptyList();
+    }
+
+    // --- Métodos para Vidas de Jugadores ---
+    public void setPlayerLives(String uuid, int lives) {
+        if (this.data != null) {
+            this.data.playerLives.put(uuid, lives);
+            saveConfig();
+        }
     }
 
     public Map<String, Integer> getPlayerLivesMap() {
-        return new HashMap<>(playerLives);
+        return this.data != null ? this.data.playerLives : Collections.emptyMap();
     }
 }

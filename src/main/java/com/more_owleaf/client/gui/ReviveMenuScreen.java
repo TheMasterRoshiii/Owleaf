@@ -2,7 +2,9 @@ package com.more_owleaf.client.gui;
 
 import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.client.SkinHelper;
-import com.more_owleaf.network.DeathDataPacket;
+import com.more_owleaf.network.NetworkHandler;
+import com.more_owleaf.network.fogata.DeathDataPacket;
+import com.more_owleaf.network.fogata.RevivePlayerPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
@@ -13,6 +15,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
+import java.util.UUID;
 
 @Mod.EventBusSubscriber(modid = More_Owleaf.MODID, value = Dist.CLIENT)
 public class ReviveMenuScreen extends Screen {
@@ -157,10 +160,17 @@ public class ReviveMenuScreen extends Screen {
 
         @Override
         public void onPress() {
+            DeathDataPacket.DeathPlayerData currentPlayer = getCurrentPlayer();
+            if (currentPlayer != null && !currentPlayer.playerUUID.isEmpty()) {
+                UUID targetUUID = UUID.fromString(currentPlayer.playerUUID);
+                NetworkHandler.INSTANCE.sendToServer(new RevivePlayerPacket(targetUUID));
+            }
         }
 
         @Override
         public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            this.active = getCurrentPlayer() != null;
+
             ResourceLocation texture = this.isHoveredOrFocused() ? ANGEL_BUTTON_HOVERED : ANGEL_BUTTON;
             if (texture != null) {
                 guiGraphics.blit(texture, this.getX(), this.getY(), 0, 0, this.width, this.height, this.width, this.height);

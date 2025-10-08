@@ -1,25 +1,27 @@
 package com.more_owleaf;
 
+import com.more_owleaf.client.ClientModEvents;
 import com.more_owleaf.commands.*;
 import com.more_owleaf.config.CasinoConfig;
 import com.more_owleaf.config.DeathRegistry;
 import com.more_owleaf.config.FogataConfig;
 import com.more_owleaf.config.RunaTradesConfig;
-import com.more_owleaf.entities.FogataEntity;
 import com.more_owleaf.events.PlayerDeathEvent;
 import com.more_owleaf.events.SoundEvents;
 import com.more_owleaf.events.UtilHandler;
 import com.more_owleaf.init.EntityInit;
 import com.more_owleaf.init.MenuInit;
 import com.more_owleaf.network.NetworkHandler;
-import com.more_owleaf.utils.SoulUtil;
-import net.minecraft.Util;
+import com.more_owleaf.utils.orb.AdminConfigManager;
+import com.more_owleaf.utils.fogata.SoulUtil;
+import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
@@ -52,6 +54,8 @@ public class More_Owleaf {
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new PlayerDeathEvent());
         MinecraftForge.EVENT_BUS.register(new UtilHandler());
+
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> bus.addListener(ClientModEvents::onClientSetup));
     }
 
     private void onCommonSetup(final FMLCommonSetupEvent event) {
@@ -61,6 +65,7 @@ public class More_Owleaf {
             DEATH_REGISTRY = new DeathRegistry();
             DEATH_REGISTRY.loadConfig();
             NetworkHandler.register();
+            AdminConfigManager.loadConfig();
             System.out.println("Casino JSON configuration loaded");
             System.out.println("Runa trades configuration loaded");
             System.out.println("Death registry loaded");

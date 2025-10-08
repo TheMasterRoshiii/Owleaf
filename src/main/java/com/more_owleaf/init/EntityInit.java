@@ -4,7 +4,8 @@ import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.entities.CasinoEntity;
 import com.more_owleaf.entities.FogataEntity;
 import com.more_owleaf.entities.RunaEntity;
-import com.more_owleaf.entities.orb.OrbEntity;
+import com.more_owleaf.entities.OrbEntity;
+import com.more_owleaf.entities.BarrierEntity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraftforge.registries.DeferredRegister;
@@ -28,6 +29,7 @@ public class EntityInit {
                     .sized(3.0f, 3.0f)
                     .clientTrackingRange(10)
                     .build("fogata"));
+
     public static final RegistryObject<EntityType<RunaEntity>> RUNA_AMARILLA = ENTITIES.register(
             "runa_amarilla",
             () -> EntityType.Builder.of(RunaEntity::new, MobCategory.MISC)
@@ -71,9 +73,16 @@ public class EntityInit {
                     .build("runa_verde"));
 
     public static final RegistryObject<EntityType<OrbEntity>> ORB_ENTITY = ENTITIES.register("orb",
-            () -> EntityType.Builder.<OrbEntity>of(OrbEntity::new, MobCategory.MISC)
+            () -> EntityType.Builder.of(OrbEntity::new, MobCategory.MISC)
                     .sized(2.0f, 2.0f)
                     .clientTrackingRange(10)
                     .updateInterval(3)
                     .build("orb"));
+
+    public static final RegistryObject<EntityType<BarrierEntity>> BARRIER_ENTITY = ENTITIES.register("barrier",
+            () -> EntityType.Builder.of(BarrierEntity::new, MobCategory.MISC)
+                    .sized(20f, 20.0f)
+                    .fireImmune()
+                    .clientTrackingRange(64)
+                    .build("barrier"));
 }

@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.util.*;
 
 public class RunaTradesConfig {
-    // Clase interna para almacenar la configuración completa de una Runa
     public static class RunaConfig {
         private final MerchantOffers offers;
         private final ItemStack itemRenderer;
@@ -54,7 +53,7 @@ public class RunaTradesConfig {
         }
 
         if (RUNA_CONFIGS.isEmpty()) {
-            createDefaultConfigFile(); // Cambiado el nombre
+            createDefaultConfigFile();
         }
     }
 
@@ -66,7 +65,7 @@ public class RunaTradesConfig {
                 String jsonContent = Files.readString(CONFIG_PATH);
 
                 if (jsonContent.trim().equals("{}") || jsonContent.trim().isEmpty()) {
-                    createDefaultConfigFile(); // Cambiado el nombre
+                    createDefaultConfigFile();
                     configLoaded = true;
                     return true;
                 }
@@ -74,7 +73,7 @@ public class RunaTradesConfig {
                 try {
                     JsonObject json = GSON.fromJson(jsonContent, JsonObject.class);
                     if (json == null) {
-                        createDefaultConfigFile(); // Cambiado el nombre
+                        createDefaultConfigFile();
                         configLoaded = true;
                         return true;
                     }
@@ -101,19 +100,19 @@ public class RunaTradesConfig {
                     ensureAllRunasHaveConfig();
 
                 } catch (JsonSyntaxException e) {
-                    createDefaultConfigFile(); // Cambiado el nombre
+                    createDefaultConfigFile();
                     configLoaded = true;
                     return true;
                 }
             } else {
-                createDefaultConfigFile(); // Cambiado el nombre
+                createDefaultConfigFile();
             }
 
             configLoaded = true;
             return true;
 
         } catch (Exception e) {
-            createDefaultConfigFile(); // Cambiado el nombre
+            createDefaultConfigFile();
             configLoaded = true;
             return false;
         }
@@ -289,7 +288,7 @@ public class RunaTradesConfig {
 
         for (UUID runaId : REGISTERED_RUNAS) {
             if (!RUNA_CONFIGS.containsKey(runaId)) {
-                RUNA_CONFIGS.put(runaId, createDefaultRunaConfig()); // Cambiado el nombre
+                RUNA_CONFIGS.put(runaId, createDefaultRunaConfig());
                 needsSave = true;
             }
         }
@@ -299,7 +298,6 @@ public class RunaTradesConfig {
         }
     }
 
-    // Cambiado el nombre para evitar conflicto
     private static void createDefaultConfigFile() {
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
@@ -371,7 +369,6 @@ public class RunaTradesConfig {
         return runaConfig;
     }
 
-    // Cambiado el nombre para evitar conflicto
     private static RunaConfig createDefaultRunaConfig() {
         return new RunaConfig(createDefaultTrades(), ItemStack.EMPTY);
     }
@@ -403,7 +400,7 @@ public class RunaTradesConfig {
 
         RunaConfig config = RUNA_CONFIGS.get(runaId);
         if (config == null) {
-            config = createDefaultRunaConfig(); // Cambiado el nombre
+            config = createDefaultRunaConfig();
             RUNA_CONFIGS.put(runaId, config);
             saveConfig();
         }
@@ -447,10 +444,8 @@ public class RunaTradesConfig {
     private static JsonObject serializeRunaConfig(RunaConfig config) {
         JsonObject json = new JsonObject();
 
-        // Serializar trades
         json.add("trades", serializeOffers(config.getOffers()));
 
-        // Serializar item renderer
         json.add("itemRenderer", serializeItemStack(config.getItemRenderer()));
 
         return json;

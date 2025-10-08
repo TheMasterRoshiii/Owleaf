@@ -16,11 +16,16 @@ public class FogataConfig {
         COMMON = specPair.getLeft();
     }
 
+    public enum MetodoExpulsion {
+        WHITELIST, BAN, BANIP
+    }
+
     public static class Common {
         public final ForgeConfigSpec.IntValue almasRequeridas;
         public final ForgeConfigSpec.IntValue vidasIniciales;
         public final ForgeConfigSpec.ConfigValue<String> itemCuchara;
         public final ForgeConfigSpec.ConfigValue<String> itemTenedor;
+        public final ForgeConfigSpec.EnumValue<MetodoExpulsion> metodoExpulsion;
 
         public Common(ForgeConfigSpec.Builder builder) {
             builder.comment("Configuración de la Fogata")
@@ -41,6 +46,13 @@ public class FogataConfig {
             itemTenedor = builder
                     .comment("No uso de alma (formato: modid:item)")
                     .define("itemTenedor", "minecraft:diamond");
+
+            metodoExpulsion = builder
+                    .comment("Define el método por el cual un jugador es expulsado al morir y cómo es reingresado al ser revivido.",
+                            "WHITELIST: Se remueve de la whitelist.",
+                            "BAN: Se banea al jugador.",
+                            "BANIP: Se banea la IP del jugador.")
+                    .defineEnum("metodoExpulsion", MetodoExpulsion.WHITELIST);
 
             builder.pop();
         }

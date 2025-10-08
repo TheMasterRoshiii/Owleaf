@@ -1,8 +1,8 @@
 package com.more_owleaf.events;
 
 import com.more_owleaf.More_Owleaf;
-import com.more_owleaf.utils.SoulProvider;
-import com.more_owleaf.utils.SoulUtil;
+import com.more_owleaf.utils.fogata.SoulProvider;
+import com.more_owleaf.utils.fogata.SoulUtil;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;

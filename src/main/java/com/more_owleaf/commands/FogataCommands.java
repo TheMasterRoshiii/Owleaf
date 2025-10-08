@@ -5,7 +5,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.more_owleaf.More_Owleaf;
 import com.more_owleaf.config.DeathRegistry;
-import com.more_owleaf.utils.SoulUtil;
+import com.more_owleaf.utils.fogata.SoulUtil;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;

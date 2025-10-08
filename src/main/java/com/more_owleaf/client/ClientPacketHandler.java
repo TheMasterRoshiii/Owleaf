@@ -1,7 +1,7 @@
 package com.more_owleaf.client;
 
 import com.more_owleaf.client.gui.ReviveMenuScreen;
-import com.more_owleaf.network.DeathDataPacket;
+import com.more_owleaf.network.fogata.DeathDataPacket;
 import net.minecraft.client.Minecraft;
 
 public class ClientPacketHandler {
