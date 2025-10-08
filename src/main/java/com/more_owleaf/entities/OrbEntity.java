@@ -1,6 +1,7 @@
 package com.more_owleaf.entities;
 
 import com.more_owleaf.config.OrbConfig;
+import com.more_owleaf.entities.BarrierEntity;
 import com.more_owleaf.init.EntityInit;
 import com.more_owleaf.network.NetworkHandler;
 import com.more_owleaf.network.orb.OpenOrbScreenPacket;
@@ -37,6 +38,8 @@ public class OrbEntity extends Entity implements GeoEntity {
     private static final EntityDataAccessor<String> CONFIG_DATA = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.STRING);
     private static final EntityDataAccessor<Boolean> DATA_TRIGGER_SPAWN_ANIM =
             SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_IS_SPAWNING =
+            SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.BOOLEAN);
 
     private OrbConfig config = new OrbConfig();
     private boolean configInitialized = false;
@@ -44,6 +47,8 @@ public class OrbEntity extends Entity implements GeoEntity {
 
     private int spawnTimer = 0;
     private int mobSpawnDelayTimer = -1;
+    private int spawnAnimationTimer = 0;
+    private boolean shouldReturnToClose = false;
 
     private int instantSpawnDelayCounter = -1;
     private int instantSpawnMobsRemaining = 0;
@@ -68,6 +73,7 @@ public class OrbEntity extends Entity implements GeoEntity {
     protected void defineSynchedData() {
         this.entityData.define(CONFIG_DATA, "{}");
         this.entityData.define(DATA_TRIGGER_SPAWN_ANIM, false);
+        this.entityData.define(DATA_IS_SPAWNING, false);
     }
 
     @Override
@@ -163,17 +169,28 @@ public class OrbEntity extends Entity implements GeoEntity {
         }
         int mobsToSpawnInThisBatch = Math.min(10, this.instantSpawnMobsRemaining);
         for (int i = 0; i < mobsToSpawnInThisBatch; i++) {
-            Entity entity = entityTypeToSpawn.create(serverLevel);
-            if (entity instanceof Mob mob) {
-                if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
-                    creeper.thunderHit((ServerLevel) mob.level(), null);
+            try {
+                Entity entity = entityTypeToSpawn.create(serverLevel);
+                if (entity instanceof Mob mob) {
+                    BlockPos spawnPos = findValidSpawnPosition(serverLevel, this.instantSpawnRadiusCache);
+                    if (spawnPos != null) {
+                        mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                        mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
+
+                        if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
+                            serverLevel.addFreshEntity(mob);
+                            serverLevel.getServer().execute(() -> {
+                                if (creeper.isAlive() && !creeper.isRemoved()) {
+                                    creeper.thunderHit(serverLevel, null);
+                                }
+                            });
+                        } else {
+                            serverLevel.addFreshEntity(mob);
+                        }
+                    }
                 }
-                BlockPos spawnPos = findValidSpawnPosition(serverLevel, this.instantSpawnRadiusCache);
-                if (spawnPos != null) {
-                    mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
-                    mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
-                    serverLevel.addFreshEntity(mob);
-                }
+            } catch (Exception e) {
+                System.err.println("Error spawning mob: " + e.getMessage());
             }
         }
         this.instantSpawnMobsRemaining -= mobsToSpawnInThisBatch;
@@ -214,7 +231,6 @@ public class OrbEntity extends Entity implements GeoEntity {
         wall.setPos(x, y, z);
         wall.setOwner(this.getUUID());
         wall.setOrientation(isZAligned);
-        wall.recalculateBoundingBox();
         level.addFreshEntity(wall);
     }
 
@@ -234,17 +250,30 @@ public class OrbEntity extends Entity implements GeoEntity {
             if (this.mobSpawnDelayTimer == 0) {
                 if (this.level() instanceof ServerLevel serverLevel) {
                     trySpawnMobs(serverLevel);
+                    this.spawnAnimationTimer = 40;
+                    this.entityData.set(DATA_IS_SPAWNING, false);
                 }
             }
             return;
         }
+
+        if (this.spawnAnimationTimer > 0) {
+            this.spawnAnimationTimer--;
+            if (this.spawnAnimationTimer == 0) {
+                this.shouldReturnToClose = true;
+            }
+        }
+
         if (this.spawnTimer > 0) {
             this.spawnTimer--;
             return;
         }
+
         this.spawnTimer = config.getSpawnRate();
         this.entityData.set(DATA_TRIGGER_SPAWN_ANIM, true);
+        this.entityData.set(DATA_IS_SPAWNING, true);
         this.mobSpawnDelayTimer = 20;
+        this.shouldReturnToClose = false;
     }
 
     private boolean trySpawnMobs(ServerLevel serverLevel) {
@@ -256,19 +285,29 @@ public class OrbEntity extends Entity implements GeoEntity {
         boolean spawnedAtLeastOne = false;
         for (int i = 0; i < config.getSpawnCount(); i++) {
             if (existingMobs + i >= config.getMaxMobs()) break;
-            Entity entity = entityTypeToSpawn.create(serverLevel);
-            if (entity instanceof Mob mob) {
-                if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
-                    creeper.thunderHit((ServerLevel) mob.level(), null);
-                }
-                BlockPos spawnPos = findValidSpawnPosition(serverLevel, config.getSpawnRadius());
-                if (spawnPos != null) {
-                    mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
-                    mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
-                    if (serverLevel.addFreshEntity(mob)) {
+            try {
+                Entity entity = entityTypeToSpawn.create(serverLevel);
+                if (entity instanceof Mob mob) {
+                    BlockPos spawnPos = findValidSpawnPosition(serverLevel, config.getSpawnRadius());
+                    if (spawnPos != null) {
+                        mob.setPos(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                        mob.finalizeSpawn(serverLevel, serverLevel.getCurrentDifficultyAt(spawnPos), MobSpawnType.SPAWNER, null, null);
+
+                        if (config.getChargeCreepers() && mob instanceof Creeper creeper) {
+                            serverLevel.addFreshEntity(mob);
+                            serverLevel.getServer().execute(() -> {
+                                if (creeper.isAlive() && !creeper.isRemoved()) {
+                                    creeper.thunderHit(serverLevel, null);
+                                }
+                            });
+                        } else {
+                            serverLevel.addFreshEntity(mob);
+                        }
                         spawnedAtLeastOne = true;
                     }
                 }
+            } catch (Exception e) {
+                System.err.println("Error spawning mob in spawner mode: " + e.getMessage());
             }
         }
         return spawnedAtLeastOne;
@@ -310,6 +349,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (tag.hasUUID("BarrierUUID")) { this.barrierEntityUUID = tag.getUUID("BarrierUUID"); }
         this.spawnTimer = tag.getInt("SpawnTimer");
         this.mobSpawnDelayTimer = tag.getInt("MobSpawnDelayTimer");
+        this.spawnAnimationTimer = tag.getInt("SpawnAnimationTimer");
+        this.shouldReturnToClose = tag.getBoolean("ShouldReturnToClose");
         this.instantSpawnDelayCounter = tag.getInt("InstantSpawnDelayCounter");
         this.instantSpawnMobsRemaining = tag.getInt("InstantSpawnMobsRemaining");
         this.instantSpawnBatchCooldown = tag.getInt("InstantSpawnBatchCooldown");
@@ -324,6 +365,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (barrierEntityUUID != null) { tag.putUUID("BarrierUUID", barrierEntityUUID); }
         tag.putInt("SpawnTimer", spawnTimer);
         tag.putInt("MobSpawnDelayTimer", mobSpawnDelayTimer);
+        tag.putInt("SpawnAnimationTimer", spawnAnimationTimer);
+        tag.putBoolean("ShouldReturnToClose", shouldReturnToClose);
         tag.putInt("InstantSpawnDelayCounter", this.instantSpawnDelayCounter);
         tag.putInt("InstantSpawnMobsRemaining", this.instantSpawnMobsRemaining);
         tag.putInt("InstantSpawnBatchCooldown", this.instantSpawnBatchCooldown);
@@ -334,7 +377,6 @@ public class OrbEntity extends Entity implements GeoEntity {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         AnimationController<OrbEntity> controller = new AnimationController<>(this, "main", 0, this::animationPredicate);
-        controller.setTransitionLength(10);
         controller.triggerableAnim("spawner_open", RawAnimation.begin().thenPlay("spawner_open"));
         controllers.add(controller);
     }
@@ -348,7 +390,18 @@ public class OrbEntity extends Entity implements GeoEntity {
         switch (config.getMode()) {
             case IDLE: return config.isActive() ? "idle" : "idle_close";
             case BARRIER: return config.isActive() ? "barrier_open" : "barrier_close";
-            case SPAWNER: return "spawner_close";
+            case SPAWNER:
+                if (!config.isActive()) {
+                    return "spawner_close";
+                }
+                if (this.entityData.get(DATA_IS_SPAWNING)) {
+                    return "spawner_open";
+                } else if (this.shouldReturnToClose) {
+                    this.shouldReturnToClose = false;
+                    return "spawner_close";
+                } else {
+                    return "spawner_close";
+                }
             default: return "idle";
         }
     }

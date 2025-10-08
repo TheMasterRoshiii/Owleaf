@@ -22,6 +22,9 @@ public class WitchTowerIntegration {
             OrbConfig config = new OrbConfig();
             config.setMode(OrbConfig.OrbMode.SPAWNER);
             config.setActive(true);
+            config.setMobType("minecraft:witch");
+            config.setSpawnRate(200);
+            config.setMaxMobs(3);
 
             orb.setConfig(config);
             level.addFreshEntity(orb);
