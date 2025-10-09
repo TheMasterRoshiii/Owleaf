@@ -21,6 +21,7 @@ public class OrbMenuScreen extends Screen {
 
     private EditBox spawnRateBox, maxMobsBox, spawnCountBox, spawnRadiusBox, mobTypeBox;
     private EditBox instantRadiusBox, instantQuantityBox, instantDelayBox;
+    private EditBox healthBox, resistanceBox;
 
     public OrbMenuScreen(int orbId, OrbConfig config) {
         super(Component.literal("Orb Configuration"));
@@ -65,6 +66,37 @@ public class OrbMenuScreen extends Screen {
             this.minecraft.keyboardHandler.setClipboard(this.orb.getUUID().toString());
             b.setMessage(Component.literal("Copied!"));
         }).pos(leftColX, 115).size(100, 20).build());
+
+        if (config.getMode() == OrbConfig.OrbMode.SPAWNER) {
+            addRenderableWidget(Button.builder(Component.literal("Damageable: " + (config.isDamageable() ? "YES" : "NO")), (b) -> {
+                config.setDamageable(!config.isDamageable());
+                b.setMessage(Component.literal("Damageable: " + (config.isDamageable() ? "YES" : "NO")));
+            }).pos(leftColX, 140).size(100, 20).build());
+
+            healthBox = new EditBox(this.font, leftColX, 170, 100, 20, Component.empty());
+            healthBox.setValue(String.valueOf(config.getMaxHealth()));
+            healthBox.setResponder((val) -> {
+                try {
+                    float health = Float.parseFloat(val);
+                    if (health > 0 && health <= 1000) {
+                        config.setMaxHealth(health);
+                    }
+                } catch (NumberFormatException e) {}
+            });
+            addRenderableWidget(healthBox);
+
+            resistanceBox = new EditBox(this.font, leftColX, 200, 100, 20, Component.empty());
+            resistanceBox.setValue(String.valueOf(config.getResistance()));
+            resistanceBox.setResponder((val) -> {
+                try {
+                    float resistance = Float.parseFloat(val);
+                    if (resistance >= 0.0f && resistance <= 1.0f) {
+                        config.setResistance(resistance);
+                    }
+                } catch (NumberFormatException e) {}
+            });
+            addRenderableWidget(resistanceBox);
+        }
 
         if (AdminConfigManager.isPlayerAdmin(this.minecraft.player.getGameProfile().getName())) {
             int midColY = 40;
@@ -149,6 +181,13 @@ public class OrbMenuScreen extends Screen {
             guiGraphics.drawString(this.font, "Radius", spawnRadiusBox.getX(), spawnRadiusBox.getY() - 10, 0xFFFFFF);
             guiGraphics.drawString(this.font, "Rate", spawnRateBox.getX(), spawnRateBox.getY() - 10, 0xFFFFFF);
             guiGraphics.drawString(this.font, "Mob ID", mobTypeBox.getX(), mobTypeBox.getY() - 10, 0xFFFFFF);
+
+            if (healthBox != null) {
+                guiGraphics.drawString(this.font, "Max Health", healthBox.getX(), healthBox.getY() - 10, 0xFFFFFF);
+            }
+            if (resistanceBox != null) {
+                guiGraphics.drawString(this.font, "Resistance (0.0-1.0)", resistanceBox.getX(), resistanceBox.getY() - 10, 0xFFFFFF);
+            }
         }
     }
 
@@ -162,6 +201,20 @@ public class OrbMenuScreen extends Screen {
     }
 
     private void saveAndClose() {
+        if (healthBox != null) {
+            try {
+                float health = Float.parseFloat(healthBox.getValue());
+                if (health > 0 && health <= 1000) config.setMaxHealth(health);
+            } catch (NumberFormatException ignored) {}
+        }
+
+        if (resistanceBox != null) {
+            try {
+                float resistance = Float.parseFloat(resistanceBox.getValue());
+                if (resistance >= 0.0f && resistance <= 1.0f) config.setResistance(resistance);
+            } catch (NumberFormatException ignored) {}
+        }
+
         NetworkHandler.INSTANCE.sendToServer(new UpdateOrbConfigPacket(this.orbId, this.config));
         this.onClose();
     }

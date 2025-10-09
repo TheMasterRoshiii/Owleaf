@@ -73,7 +73,7 @@ public class EntityInit {
                     .build("runa_verde"));
 
     public static final RegistryObject<EntityType<OrbEntity>> ORB_ENTITY = ENTITIES.register("orb",
-            () -> EntityType.Builder.of(OrbEntity::new, MobCategory.MISC)
+            () -> EntityType.Builder.<OrbEntity>of(OrbEntity::new, MobCategory.MISC)
                     .sized(2.0f, 2.0f)
                     .clientTrackingRange(10)
                     .updateInterval(3)

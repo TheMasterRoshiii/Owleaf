@@ -17,6 +17,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
@@ -36,8 +37,9 @@ import java.util.UUID;
 
 public class OrbEntity extends Entity implements GeoEntity {
     private static final EntityDataAccessor<String> CONFIG_DATA = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.STRING);
-    private static final EntityDataAccessor<Integer> FORCE_SYNC =
-            SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> FORCE_SYNC = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Float> HEALTH = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Float> MAX_HEALTH = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.FLOAT);
 
     private OrbConfig config = new OrbConfig();
     private boolean configInitialized = false;
@@ -60,17 +62,84 @@ public class OrbEntity extends Entity implements GeoEntity {
     public OrbEntity(EntityType<?> entityType, Level level) {
         super(entityType, level);
         this.noCulling = true;
+        this.setNoGravity(true);
+        this.noPhysics = false;
     }
-
-    @Override public boolean canBeCollidedWith() { return true; }
-    @Override public boolean isPickable() { return true; }
-    @Override public boolean isPushable() { return false; }
-    @Override public Packet<ClientGamePacketListener> getAddEntityPacket() { return NetworkHooks.getEntitySpawningPacket(this); }
 
     @Override
     protected void defineSynchedData() {
         this.entityData.define(CONFIG_DATA, "{}");
         this.entityData.define(FORCE_SYNC, 0);
+        this.entityData.define(HEALTH, 100.0F);
+        this.entityData.define(MAX_HEALTH, 100.0F);
+    }
+
+    @Override
+    public boolean canBeCollidedWith() {
+        return true;
+    }
+
+    @Override
+    public boolean isPickable() {
+        return true;
+    }
+
+    @Override
+    public boolean isPushable() {
+        return false;
+    }
+
+
+    public boolean isAffectedByFluids() {
+        return false;
+    }
+
+    @Override
+    public boolean fireImmune() {
+        return true;
+    }
+
+    @Override
+    public Packet<ClientGamePacketListener> getAddEntityPacket() {
+        return NetworkHooks.getEntitySpawningPacket(this);
+    }
+
+    @Override
+    public boolean hurt(DamageSource damageSource, float amount) {
+        if (config.getMode() != OrbConfig.OrbMode.SPAWNER || !config.isDamageable()) {
+            return false;
+        }
+
+        float currentHealth = this.entityData.get(HEALTH);
+        float finalDamage = amount * (1.0f - config.getResistance());
+        float newHealth = Math.max(0, currentHealth - finalDamage);
+
+        this.entityData.set(HEALTH, newHealth);
+
+        if (newHealth <= 0) {
+            this.remove(RemovalReason.KILLED);
+        }
+
+        return true;
+    }
+
+    public float getHealth() {
+        return this.entityData.get(HEALTH);
+    }
+
+    public void setHealth(float health) {
+        this.entityData.set(HEALTH, Math.max(0, Math.min(health, this.entityData.get(MAX_HEALTH))));
+    }
+
+    public float getMaxHealth() {
+        return this.entityData.get(MAX_HEALTH);
+    }
+
+    public void setMaxHealth(float maxHealth) {
+        this.entityData.set(MAX_HEALTH, maxHealth);
+        if (getHealth() > maxHealth) {
+            setHealth(maxHealth);
+        }
     }
 
     @Override
@@ -87,16 +156,34 @@ public class OrbEntity extends Entity implements GeoEntity {
     @Override
     public void tick() {
         super.tick();
+
+        this.setDeltaMovement(0, 0, 0);
+        this.fallDistance = 0.0F;
+
         if (!level().isClientSide) {
             if (!configInitialized) {
                 this.config = OrbConfigManager.loadOrbConfig(this.getUUID());
                 OrbConfigManager.saveOrbConfig(this.getUUID(), this.config);
                 this.configInitialized = true;
+                updateHealthAttributes();
                 forceSync();
             }
 
             handleSpawnerLogic();
             handleInstantSpawnProcess();
+        }
+    }
+
+    @Override
+    public void setPos(double x, double y, double z) {
+        super.setPos(x, y, z);
+        this.setDeltaMovement(0, 0, 0);
+    }
+
+    private void updateHealthAttributes() {
+        if (!level().isClientSide) {
+            setMaxHealth(config.getMaxHealth());
+            setHealth(config.getMaxHealth());
         }
     }
 
@@ -158,12 +245,16 @@ public class OrbEntity extends Entity implements GeoEntity {
                             this.config.getSpawnCount() != newConfig.getSpawnCount() ||
                             this.config.getMaxMobs() != newConfig.getMaxMobs() ||
                             this.config.getSpawnRadius() != newConfig.getSpawnRadius() ||
-                            this.config.getChargeCreepers() != newConfig.getChargeCreepers();
+                            this.config.getChargeCreepers() != newConfig.getChargeCreepers() ||
+                            this.config.getMaxHealth() != newConfig.getMaxHealth() ||
+                            this.config.getResistance() != newConfig.getResistance() ||
+                            this.config.isDamageable() != newConfig.isDamageable();
         }
 
         this.config = newConfig;
 
         if (!level().isClientSide) {
+            updateHealthAttributes();
             OrbConfigManager.saveOrbConfig(this.getUUID(), this.config);
             boolean isBarrierActiveNow = (this.config.getMode() == OrbConfig.OrbMode.BARRIER && this.config.isActive());
 
@@ -366,6 +457,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         this.instantSpawnRadiusCache = tag.getInt("InstantSpawnRadiusCache");
         this.instantSpawnMobTypeCache = tag.getString("InstantSpawnMobTypeCache");
         this.syncCounter = tag.getInt("SyncCounter");
+        this.entityData.set(HEALTH, tag.getFloat("Health"));
+        this.entityData.set(MAX_HEALTH, tag.getFloat("MaxHealth"));
     }
 
     @Override
@@ -382,6 +475,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         tag.putInt("InstantSpawnRadiusCache", this.instantSpawnRadiusCache);
         tag.putString("InstantSpawnMobTypeCache", this.instantSpawnMobTypeCache);
         tag.putInt("SyncCounter", this.syncCounter);
+        tag.putFloat("Health", getHealth());
+        tag.putFloat("MaxHealth", getMaxHealth());
     }
 
     @Override
