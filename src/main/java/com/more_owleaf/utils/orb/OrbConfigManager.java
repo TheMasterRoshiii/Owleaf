@@ -1,8 +1,11 @@
 package com.more_owleaf.utils.orb;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.more_owleaf.config.OrbConfig;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 import java.io.FileReader;
@@ -13,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public class OrbConfigManager {
+    private static final Logger LOGGER = LogManager.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Map<UUID, OrbConfig> ORB_CONFIGS = new HashMap<>();
     private static File configDirectory;
@@ -36,7 +40,7 @@ public class OrbConfigManager {
         try (FileWriter writer = new FileWriter(configFile)) {
             GSON.toJson(config, writer);
         } catch (IOException e) {
-            System.err.println("Error saving orb config: " + e.getMessage());
+            LOGGER.error("Error saving orb config: " + e.getMessage());
         }
     }
 
@@ -56,7 +60,7 @@ public class OrbConfigManager {
                 ORB_CONFIGS.put(orbId, config);
                 return config;
             } catch (IOException e) {
-                System.err.println("Error loading orb config: " + e.getMessage());
+                LOGGER.error("Error loading orb config: " + e.getMessage());
             }
         }
 
@@ -94,6 +98,7 @@ public class OrbConfigManager {
                             ORB_CONFIGS.put(orbId, config);
                         }
                     } catch (Exception e) {
+                        LOGGER.error("Error loading config file " + file.getName() + ": " + e.getMessage());
                     }
                 }
             }
@@ -106,5 +111,11 @@ public class OrbConfigManager {
         if (configFile.exists()) {
             configFile.delete();
         }
+    }
+
+    public static void reloadAllConfigs() {
+        ORB_CONFIGS.clear();
+        loadAllConfigs();
+        LOGGER.info("All orb configurations reloaded successfully. Loaded " + ORB_CONFIGS.size() + " configurations.");
     }
 }

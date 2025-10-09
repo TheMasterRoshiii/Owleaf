@@ -79,6 +79,8 @@ public class More_Owleaf {
         RunaReloadCommand.register(event.getDispatcher());
         FogataCommands.register(event.getDispatcher());
         OrbCommands.register(event.getDispatcher());
+        OrbReloadCommand.register(event.getDispatcher());
+        AdminReloadCommand.register(event.getDispatcher());
     }
 
     @SubscribeEvent
