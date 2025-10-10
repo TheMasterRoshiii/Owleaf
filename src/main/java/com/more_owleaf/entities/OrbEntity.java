@@ -40,6 +40,7 @@ public class OrbEntity extends Entity implements GeoEntity {
     private static final EntityDataAccessor<Integer> FORCE_SYNC = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Float> HEALTH = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> MAX_HEALTH = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> IS_SPAWNING_ANIMATION = SynchedEntityData.defineId(OrbEntity.class, EntityDataSerializers.BOOLEAN);
 
     private OrbConfig config = new OrbConfig();
     private boolean configInitialized = false;
@@ -49,6 +50,7 @@ public class OrbEntity extends Entity implements GeoEntity {
     private int spawnTimer = 0;
     private int mobSpawnDelayTimer = -1;
     private boolean isCurrentlySpawning = false;
+    private int spawnAnimationTimer = 0;
 
     private int instantSpawnDelayCounter = -1;
     private int instantSpawnMobsRemaining = 0;
@@ -72,6 +74,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         this.entityData.define(FORCE_SYNC, 0);
         this.entityData.define(HEALTH, 100.0F);
         this.entityData.define(MAX_HEALTH, 100.0F);
+        this.entityData.define(IS_SPAWNING_ANIMATION, false);
     }
 
     @Override
@@ -106,7 +109,10 @@ public class OrbEntity extends Entity implements GeoEntity {
 
     @Override
     public boolean hurt(DamageSource damageSource, float amount) {
-        if (config.getMode() != OrbConfig.OrbMode.SPAWNER || !config.isDamageable()) {
+        boolean canTakeDamage = (config.getMode() == OrbConfig.OrbMode.SPAWNER || config.getMode() == OrbConfig.OrbMode.BARRIER)
+                && config.isDamageable();
+
+        if (!canTakeDamage) {
             return false;
         }
 
@@ -170,6 +176,7 @@ public class OrbEntity extends Entity implements GeoEntity {
             }
 
             handleSpawnerLogic();
+            handleSpawnAnimation();
             handleInstantSpawnProcess();
         }
     }
@@ -200,6 +207,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (this.mobSpawnDelayTimer > 0) {
             this.mobSpawnDelayTimer--;
             if (this.mobSpawnDelayTimer == 0) {
+                startSpawnAnimation();
                 trySpawnMobs();
             }
             return;
@@ -213,6 +221,20 @@ public class OrbEntity extends Entity implements GeoEntity {
         startSpawnCycle();
     }
 
+    private void handleSpawnAnimation() {
+        if (this.spawnAnimationTimer > 0) {
+            this.spawnAnimationTimer--;
+            if (this.spawnAnimationTimer == 0) {
+                this.entityData.set(IS_SPAWNING_ANIMATION, false);
+            }
+        }
+    }
+
+    private void startSpawnAnimation() {
+        this.entityData.set(IS_SPAWNING_ANIMATION, true);
+        this.spawnAnimationTimer = 40;
+    }
+
     private void startSpawnCycle() {
         this.spawnTimer = config.getSpawnRate();
         this.mobSpawnDelayTimer = 20;
@@ -223,6 +245,8 @@ public class OrbEntity extends Entity implements GeoEntity {
         this.isCurrentlySpawning = false;
         this.spawnTimer = 0;
         this.mobSpawnDelayTimer = -1;
+        this.spawnAnimationTimer = 0;
+        this.entityData.set(IS_SPAWNING_ANIMATION, false);
     }
 
     @Override
@@ -303,6 +327,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         if (this.instantSpawnMobsRemaining > 0 && this.instantSpawnDelayCounter == 0) {
             this.instantSpawnBatchCooldown--;
             if (this.instantSpawnBatchCooldown <= 0) {
+                startSpawnAnimation();
                 spawnBatch();
                 this.instantSpawnBatchCooldown = 3;
             }
@@ -451,6 +476,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         this.spawnTimer = tag.getInt("SpawnTimer");
         this.mobSpawnDelayTimer = tag.getInt("MobSpawnDelayTimer");
         this.isCurrentlySpawning = tag.getBoolean("IsCurrentlySpawning");
+        this.spawnAnimationTimer = tag.getInt("SpawnAnimationTimer");
         this.instantSpawnDelayCounter = tag.getInt("InstantSpawnDelayCounter");
         this.instantSpawnMobsRemaining = tag.getInt("InstantSpawnMobsRemaining");
         this.instantSpawnBatchCooldown = tag.getInt("InstantSpawnBatchCooldown");
@@ -459,6 +485,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         this.syncCounter = tag.getInt("SyncCounter");
         this.entityData.set(HEALTH, tag.getFloat("Health"));
         this.entityData.set(MAX_HEALTH, tag.getFloat("MaxHealth"));
+        this.entityData.set(IS_SPAWNING_ANIMATION, tag.getBoolean("IsSpawningAnimation"));
     }
 
     @Override
@@ -469,6 +496,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         tag.putInt("SpawnTimer", spawnTimer);
         tag.putInt("MobSpawnDelayTimer", mobSpawnDelayTimer);
         tag.putBoolean("IsCurrentlySpawning", isCurrentlySpawning);
+        tag.putInt("SpawnAnimationTimer", spawnAnimationTimer);
         tag.putInt("InstantSpawnDelayCounter", this.instantSpawnDelayCounter);
         tag.putInt("InstantSpawnMobsRemaining", this.instantSpawnMobsRemaining);
         tag.putInt("InstantSpawnBatchCooldown", this.instantSpawnBatchCooldown);
@@ -477,6 +505,7 @@ public class OrbEntity extends Entity implements GeoEntity {
         tag.putInt("SyncCounter", this.syncCounter);
         tag.putFloat("Health", getHealth());
         tag.putFloat("MaxHealth", getMaxHealth());
+        tag.putBoolean("IsSpawningAnimation", this.entityData.get(IS_SPAWNING_ANIMATION));
     }
 
     @Override
@@ -497,7 +526,15 @@ public class OrbEntity extends Entity implements GeoEntity {
             case BARRIER:
                 return config.isActive() ? "barrier_open" : "barrier_close";
             case SPAWNER:
-                return config.isActive() ? "spawner_open" : "spawner_close";
+                if (config.isActive()) {
+                    if (this.entityData.get(IS_SPAWNING_ANIMATION)) {
+                        return "spawner_close";
+                    } else {
+                        return "spawner_open";
+                    }
+                } else {
+                    return "spawner_close";
+                }
             default:
                 return "idle";
         }

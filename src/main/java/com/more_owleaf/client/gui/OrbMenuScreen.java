@@ -55,17 +55,56 @@ public class OrbMenuScreen extends Screen {
                 config.setBarrierZAligned(!config.isBarrierZAligned());
                 b.setMessage(Component.literal("Orientation: " + (config.isBarrierZAligned() ? "N-S" : "E-W")));
             }).pos(leftColX, 65).size(100, 20).build());
+
+            addRenderableWidget(Button.builder(Component.literal("Damageable: " + (config.isDamageable() ? "YES" : "NO")), (b) -> {
+                config.setDamageable(!config.isDamageable());
+                b.setMessage(Component.literal("Damageable: " + (config.isDamageable() ? "YES" : "NO")));
+            }).pos(leftColX, 90).size(100, 20).build());
+
+            healthBox = new EditBox(this.font, leftColX, 120, 100, 20, Component.empty());
+            healthBox.setValue(String.valueOf(config.getMaxHealth()));
+            healthBox.setResponder((val) -> {
+                try {
+                    float health = Float.parseFloat(val);
+                    if (health > 0 && health <= 1000) {
+                        config.setMaxHealth(health);
+                    }
+                } catch (NumberFormatException e) {}
+            });
+            addRenderableWidget(healthBox);
+
+            resistanceBox = new EditBox(this.font, leftColX, 150, 100, 20, Component.empty());
+            resistanceBox.setValue(String.valueOf(config.getResistance()));
+            resistanceBox.setResponder((val) -> {
+                try {
+                    float resistance = Float.parseFloat(val);
+                    if (resistance >= 0.0f && resistance <= 1.0f) {
+                        config.setResistance(resistance);
+                    }
+                } catch (NumberFormatException e) {}
+            });
+            addRenderableWidget(resistanceBox);
+
+            addRenderableWidget(Button.builder(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")), (b) -> {
+                config.setActive(!config.isActive());
+                b.setMessage(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")));
+            }).pos(leftColX, 180).size(100, 20).build());
+
+            addRenderableWidget(Button.builder(Component.literal("Copy UUID"), (b) -> {
+                this.minecraft.keyboardHandler.setClipboard(this.orb.getUUID().toString());
+                b.setMessage(Component.literal("Copied!"));
+            }).pos(leftColX, 205).size(100, 20).build());
+        } else {
+            addRenderableWidget(Button.builder(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")), (b) -> {
+                config.setActive(!config.isActive());
+                b.setMessage(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")));
+            }).pos(leftColX, 90).size(100, 20).build());
+
+            addRenderableWidget(Button.builder(Component.literal("Copy UUID"), (b) -> {
+                this.minecraft.keyboardHandler.setClipboard(this.orb.getUUID().toString());
+                b.setMessage(Component.literal("Copied!"));
+            }).pos(leftColX, 115).size(100, 20).build());
         }
-
-        addRenderableWidget(Button.builder(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")), (b) -> {
-            config.setActive(!config.isActive());
-            b.setMessage(Component.literal("State: " + (config.isActive() ? "ACTIVE" : "INACTIVE")));
-        }).pos(leftColX, 90).size(100, 20).build());
-
-        addRenderableWidget(Button.builder(Component.literal("Copy UUID"), (b) -> {
-            this.minecraft.keyboardHandler.setClipboard(this.orb.getUUID().toString());
-            b.setMessage(Component.literal("Copied!"));
-        }).pos(leftColX, 115).size(100, 20).build());
 
         if (config.getMode() == OrbConfig.OrbMode.SPAWNER) {
             addRenderableWidget(Button.builder(Component.literal("Damageable: " + (config.isDamageable() ? "YES" : "NO")), (b) -> {
@@ -182,6 +221,15 @@ public class OrbMenuScreen extends Screen {
             guiGraphics.drawString(this.font, "Rate", spawnRateBox.getX(), spawnRateBox.getY() - 10, 0xFFFFFF);
             guiGraphics.drawString(this.font, "Mob ID", mobTypeBox.getX(), mobTypeBox.getY() - 10, 0xFFFFFF);
 
+            if (healthBox != null) {
+                guiGraphics.drawString(this.font, "Max Health", healthBox.getX(), healthBox.getY() - 10, 0xFFFFFF);
+            }
+            if (resistanceBox != null) {
+                guiGraphics.drawString(this.font, "Resistance (0.0-1.0)", resistanceBox.getX(), resistanceBox.getY() - 10, 0xFFFFFF);
+            }
+        }
+
+        if (config.getMode() == OrbConfig.OrbMode.BARRIER) {
             if (healthBox != null) {
                 guiGraphics.drawString(this.font, "Max Health", healthBox.getX(), healthBox.getY() - 10, 0xFFFFFF);
             }
